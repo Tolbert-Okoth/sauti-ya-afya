@@ -1,0 +1,53 @@
+# --- Dependencies ---
+node_modules/
+/client/node_modules/
+/server/node_modules/
+/ai-engine/venv/
+/ai-engine/env/
+__pycache__/
+*.py[cod]
+
+# --- Environment Variables (CRITICAL: NEVER COMMIT THESE) ---
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+/client/.env
+/server/.env
+/ai-engine/.env
+
+# --- Build Outputs ---
+/client/build/
+/client/dist/
+dist/
+build/
+
+# --- Logs & Debugging ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# --- Media Uploads (Don't push large patient audio files) ---
+/server/uploads/*
+!/server/uploads/.gitkeep
+
+# --- IDE & System ---
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# --- Python Specific ---
+*.so
+.Python
+develop-eggs/
+eggs/
+.installed.cfg
+*.egg-info/
