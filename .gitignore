@@ -51,3 +51,8 @@ develop-eggs/
 eggs/
 .installed.cfg
 *.egg-info/
+
+# Secrets
+.env
+.env.*
+server/config/serviceAccountKey.json
