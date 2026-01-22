@@ -6,8 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import axios from 'axios';
 import { LanguageProvider } from './context/LanguageContext'; 
-
-
+import config from './config'; // 👈 IMPORT CONFIG
 
 // ==========================================
 // 🧩 STANDARD COMPONENTS
@@ -46,8 +45,8 @@ function App() {
       if (currentUser) {
         try {
           const token = await currentUser.getIdToken();
-          // Fetch Role from PostgreSQL via Backend
-          const res = await axios.post('http://localhost:5000/api/login', {}, {
+          // ✅ FIX: Use dynamic config.API_BASE_URL
+          const res = await axios.post(`${config.API_BASE_URL}/login`, {}, {
             headers: { Authorization: `Bearer ${token}` }
           });
           setUserRole(res.data.role);

@@ -1,7 +1,9 @@
+/* client/src/context/LanguageContext.js */
 import React, { createContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import { auth } from '../firebase';
 import { translations } from '../translations';
+import config from '../config'; // 👈 IMPORT CONFIG
 
 export const LanguageContext = createContext();
 
@@ -15,7 +17,8 @@ export const LanguageProvider = ({ children }) => {
         const user = auth.currentUser;
         if (user) {
           const token = await user.getIdToken();
-          const res = await axios.get('http://localhost:5000/api/settings', {
+          // ✅ FIX: Use dynamic config.API_BASE_URL
+          const res = await axios.get(`${config.API_BASE_URL}/settings`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (res.data && res.data.language) {
@@ -39,7 +42,8 @@ export const LanguageProvider = ({ children }) => {
       const user = auth.currentUser;
       if (user) {
         const token = await user.getIdToken();
-        await axios.put('http://localhost:5000/api/settings', 
+        // ✅ FIX: Use dynamic config.API_BASE_URL
+        await axios.put(`${config.API_BASE_URL}/settings`, 
           { language: newLang }, 
           { headers: { Authorization: `Bearer ${token}` } }
         );
