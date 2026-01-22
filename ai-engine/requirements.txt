@@ -1,19 +1,21 @@
 # ai-engine/requirements.txt
 
+# Tell pip to look for CPU-only versions here first
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 # Web Server
-Flask==3.0.0
-gunicorn==21.2.0
-flask-cors==4.0.0
+Flask
+gunicorn
+flask-cors
 
 # Audio Processing
-numpy==1.26.4       
-librosa==0.10.1
-soundfile==0.12.1
+numpy
+librosa
+soundfile
 
 # AI / Inference
-groq==0.4.2
+groq
 
-# PyTorch (CPU Version)
---find-links https://download.pytorch.org/whl/torch_stable.html
-torch==2.1.0+cpu
-torchaudio==2.1.0+cpu
+# Machine Learning (Will auto-select CPU version)
+torch
+torchaudio
