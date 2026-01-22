@@ -39,30 +39,20 @@ try {
 }
 
 // ==========================================
-// 2. MIDDLEWARE (🛡️ CORS FIX ADDED HERE)
+// 2. MIDDLEWARE (🛡️ BULLETPROOF CORS FIX)
 // ==========================================
 
-const allowedOrigins = [
-  "http://localhost:3000",                                      // Localhost
-  "https://sautiyaafya.vercel.app",                             // Production Vercel
-  "https://sauti-ya-afya-git-main-tolberts-projects.vercel.app" // Your Specific Preview URL
-];
-
+// ✅ FIX: Allow requests from ANY origin dynamically
+// "origin: true" tells Express to reflect the request origin back to the client.
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    // Check if the origin is in our allowed list
-    if (allowedOrigins.indexOf(origin) === -1) {
-      // For development smoothness, we allow it, but log it.
-      // In strict production, you would pass an error here.
-      return callback(null, true); 
-    }
-    return callback(null, true);
-  },
-  credentials: true
+  origin: true, 
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
+
+// ✅ FIX: Explicitly handle "Preflight" (OPTIONS) requests for all routes
+app.options('*', cors());
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -147,6 +137,22 @@ app.post('/api/login', verifyToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.post('/api/register', verifyToken, async (req, res) => {
+    const { role, county_id } = req.body;
+    const { email, uid } = req.user; // Get from token
+    try {
+        const newUser = await db.query(
+            "INSERT INTO users (firebase_uid, email, role, county_id) VALUES ($1, $2, $3, $4) RETURNING *",
+            [uid, email, role || 'CHW', county_id || 1]
+        );
+        res.json(newUser.rows[0]);
+    } catch (err) {
+        console.error("Registration Error:", err);
+        res.status(500).json({ message: "Server Error" });
+    }
+});
+
 
 app.get('/api/counties', verifyToken, async (req, res) => {
     try {
