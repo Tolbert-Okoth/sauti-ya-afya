@@ -1,0 +1,62 @@
+/* src/components/Sidebar.css */
+
+/* === DEFAULT DESKTOP BEHAVIOR === */
+.sidebar-container {
+  width: 250px; /* Keep your fixed width for desktop */
+  transition: all 0.3s ease-in-out;
+  position: relative; /* Normal flow on desktop */
+  z-index: 1000;
+}
+
+.mobile-toggle-btn {
+  display: none; /* Hide toggle button on desktop */
+}
+
+/* === 📱 MOBILE OVERRIDES (< 768px) === */
+@media (max-width: 768px) {
+  
+  /* 1. Force the Sidebar off-screen by default */
+  .sidebar-container {
+    position: fixed; /* Take it out of layout flow so content expands */
+    top: 0;
+    left: -100%; /* Hide completely to the left */
+    height: 100vh;
+    width: 280px; /* Slightly wider for touch */
+    box-shadow: 4px 0 15px rgba(0,0,0,0.1); /* Add shadow for depth */
+  }
+
+  /* 2. Slide it in when 'show-mobile' class is active */
+  .sidebar-container.show-mobile {
+    left: 0;
+  }
+
+  /* 3. Show the Hamburger Button */
+  .mobile-toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed; /* Floats on top right */
+    top: 15px;
+    right: 15px;
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    z-index: 1100; /* Above everything */
+    background: white;
+    border: 1px solid #ddd;
+    color: #333;
+    font-size: 1.2rem;
+  }
+
+  /* 4. Backdrop (Dark Overlay) */
+  .sidebar-backdrop {
+    position: fixed;
+    top: 0; 
+    left: 0; 
+    width: 100vw; 
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5); /* Semi-transparent black */
+    z-index: 900; /* Behind sidebar, above content */
+    backdrop-filter: blur(2px);
+  }
+}
