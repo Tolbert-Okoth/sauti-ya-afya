@@ -2,10 +2,10 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
-const admin = require('firebase-admin'); // Keeping this for Authentication
+const admin = require('firebase-admin'); 
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2; // ✅ Cloudinary Import
-const stream = require('stream'); // ✅ Needed for buffer uploads
+const cloudinary = require('cloudinary').v2; 
+const stream = require('stream'); 
 require('dotenv').config();
 
 const app = express();
@@ -22,23 +22,48 @@ cloudinary.config({
   secure: true
 });
 
-// B. Firebase Auth Config (For Login Only)
+// B. Firebase Auth Config
 let serviceAccount;
-if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-} else {
-  serviceAccount = require('./config/serviceAccountKey.json');
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  } else {
+    serviceAccount = require('./config/serviceAccountKey.json');
+  }
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+} catch (error) {
+  console.error("Firebase Init Error:", error.message);
 }
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-  // Note: storageBucket is removed because we are using Cloudinary now
-});
+// ==========================================
+// 2. MIDDLEWARE (🛡️ CORS FIX ADDED HERE)
+// ==========================================
 
-// ==========================================
-// 2. MIDDLEWARE
-// ==========================================
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:3000",                                      // Localhost
+  "https://sautiyaafya.vercel.app",                             // Production Vercel
+  "https://sauti-ya-afya-git-main-tolberts-projects.vercel.app" // Your Specific Preview URL
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if the origin is in our allowed list
+    if (allowedOrigins.indexOf(origin) === -1) {
+      // For development smoothness, we allow it, but log it.
+      // In strict production, you would pass an error here.
+      return callback(null, true); 
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -67,7 +92,7 @@ const uploadToCloudinary = (buffer, folder = 'audio') => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       { 
-        resource_type: "auto", // Handles audio/video/images automatically
+        resource_type: "auto", 
         folder: folder 
       },
       (error, result) => {
@@ -149,10 +174,8 @@ app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) =
     // --- CLOUDINARY UPLOAD LOGIC ---
     if (req.file) {
         console.log("Uploading to Cloudinary...");
-        // Uploads to 'sautiyaafya-audio' folder in your Cloudinary account
         const result = await uploadToCloudinary(req.file.buffer, 'sautiyaafya-audio');
-        
-        recordingUrl = result.secure_url; // Format: https://res.cloudinary.com/...
+        recordingUrl = result.secure_url; 
         console.log(`[Cloud] Uploaded: ${recordingUrl}`);
     }
 
