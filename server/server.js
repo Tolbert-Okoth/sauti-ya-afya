@@ -39,11 +39,11 @@ try {
 }
 
 // ==========================================
-// 2. MIDDLEWARE (🛡️ BULLETPROOF CORS FIX)
+// 2. MIDDLEWARE (🛡️ CORS FIX)
 // ==========================================
 
-// ✅ FIX: Allow requests from ANY origin dynamically
-// "origin: true" tells Express to reflect the request origin back to the client.
+// ✅ ALLOW ALL ORIGINS (Fixes CORS for Vercel)
+// "origin: true" reflects the request origin, allowing Vercel to connect.
 app.use(cors({
   origin: true, 
   credentials: true,
@@ -51,8 +51,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
-// ✅ FIX: Explicitly handle "Preflight" (OPTIONS) requests for all routes
-app.options('*', cors());
+// ❌ REMOVED: app.options('*', cors()) 
+// (This line was causing the "PathError" crash on Render)
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
