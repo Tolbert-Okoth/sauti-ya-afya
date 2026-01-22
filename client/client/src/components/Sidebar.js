@@ -4,7 +4,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   FaUserMd, FaChartPie, FaGlobeAfrica, FaCog, 
   FaSignOutAlt, FaBars, FaTimes, FaUserInjured 
-} from 'react-icons/fa'; // 👈 Added FaUserInjured icon
+} from 'react-icons/fa'; 
 
 const Sidebar = ({ role, onLogout }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -23,7 +23,7 @@ const Sidebar = ({ role, onLogout }) => {
   // 2. DYNAMIC STYLES
   const sidebarStyle = {
     width: '260px',
-    height: '100%', 
+    // height: '100%',  <--- REMOVED DUPLICATE KEY (The dynamic one below handles it)
     backgroundColor: 'white', 
     display: 'flex',
     flexDirection: 'column',
@@ -35,7 +35,7 @@ const Sidebar = ({ role, onLogout }) => {
     
     // MOBILE OVERRIDES:
     position: isMobile ? 'fixed' : 'relative',
-    height: isMobile ? '100vh' : '100%', 
+    height: isMobile ? '100vh' : '100%', // ✅ Kept this one (Dynamic)
     left: isMobile ? (isOpen ? '0' : '-100%') : '0', 
     top: 0,
     boxShadow: isMobile ? '2px 0 10px rgba(0,0,0,0.1)' : 'none'
