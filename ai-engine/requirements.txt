@@ -1,21 +1,22 @@
 # ai-engine/requirements.txt
 
-# Tell pip to look for CPU-only versions here first
+# PyTorch CPU (Render Free Tier)
 --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Web Server
-Flask
+# Web Server (FastAPI Stack)
+fastapi
+uvicorn[standard]
+python-multipart
 gunicorn
-flask-cors
 
-# Audio Processing
+# Audio & Math
 numpy
 librosa
 soundfile
 
-# AI / Inference
+# AI Logic
 groq
 
-# Machine Learning (Will auto-select CPU version)
+# ML Libraries
 torch
 torchaudio
