@@ -3,11 +3,12 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   signInWithEmailAndPassword, 
-  signInWithPopup // <--- BACK TO POPUP (It is the only way on localhost)
+  signInWithPopup 
 } from 'firebase/auth';
 import { auth, googleProvider, resetPassword } from '../firebase';
 import axios from 'axios';
 import { FaGoogle, FaStethoscope } from 'react-icons/fa';
+import config from '../config'; // 👈 IMPORT CONFIGURATION
 
 const Login = ({ setRole }) => {
   const navigate = useNavigate();
@@ -32,7 +33,8 @@ const Login = ({ setRole }) => {
       setLoading(true);
       const token = await user.getIdToken();
       
-      const response = await axios.post('http://localhost:5000/api/login', {}, {
+      // ✅ FIX: Use dynamic config.API_BASE_URL instead of localhost
+      const response = await axios.post(`${config.API_BASE_URL}/login`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -64,7 +66,6 @@ const Login = ({ setRole }) => {
     }
   };
 
-  // 🚨 FIXED GOOGLE LOGIN
   const handleGoogleLogin = async () => {
     setError('');
     

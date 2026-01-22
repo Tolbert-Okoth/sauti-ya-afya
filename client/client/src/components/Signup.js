@@ -5,6 +5,7 @@ import { createUserWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 import axios from 'axios';
 import { FaGoogle, FaUserPlus } from 'react-icons/fa';
+import config from '../config'; // 👈 IMPORT CONFIGURATION
 
 const Signup = ({ setRole }) => {
   const navigate = useNavigate();
@@ -26,7 +27,9 @@ const Signup = ({ setRole }) => {
 
   const registerInBackend = async (user) => {
     const token = await user.getIdToken();
-    await axios.post('http://localhost:5000/api/register', {
+    
+    // ✅ FIX: Use dynamic config.API_BASE_URL instead of localhost
+    await axios.post(`${config.API_BASE_URL}/register`, {
       role: formData.role,
       county_id: formData.county_id
     }, {
