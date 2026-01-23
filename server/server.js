@@ -1,6 +1,6 @@
 /* server/server.js */
 const express = require('express');
-const cors = require('cors'); // ✅ Use the standard package
+const cors = require('cors'); 
 const { Pool } = require('pg');
 const admin = require('firebase-admin'); 
 const multer = require('multer');
@@ -37,7 +37,7 @@ try {
 }
 
 // ==========================================
-// 2. MIDDLEWARE (🛡️ STANDARD CORS SECURITY)
+// 2. MIDDLEWARE
 // ==========================================
 
 const allowedOrigins = [
@@ -62,7 +62,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -125,13 +124,13 @@ const verifyToken = async (req, res, next) => {
 // 6. ROUTES
 // ==========================================
 
-app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Standardized Backend Online"));
+app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Backend Online"));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// 🛠️ DATABASE SETUP ROUTE (RUN THIS ONCE)
+// 🛠️ DATABASE SETUP ROUTE (UPDATED TO FIX MISSING COLUMN)
 app.get('/api/init-db', async (req, res) => {
   try {
-    // 1. Create Users Table
+    // 1. Create Users Table (If missing)
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -143,7 +142,13 @@ app.get('/api/init-db', async (req, res) => {
       );
     `);
 
-    // 2. Create Patients Table
+    // 🚨 2. FIX: Add firebase_uid if it's missing (The Fix for your Error)
+    await db.query(`
+        ALTER TABLE users 
+        ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255) UNIQUE;
+    `);
+
+    // 3. Create Patients Table
     await db.query(`
       CREATE TABLE IF NOT EXISTS patients (
         id SERIAL PRIMARY KEY,
@@ -162,7 +167,7 @@ app.get('/api/init-db', async (req, res) => {
       );
     `);
 
-    // 3. Create Settings Table
+    // 4. Create Settings Table
     await db.query(`
       CREATE TABLE IF NOT EXISTS user_settings (
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -178,7 +183,7 @@ app.get('/api/init-db', async (req, res) => {
       );
     `);
 
-     // 4. Create Counties Table
+     // 5. Create Counties Table
      await db.query(`
         CREATE TABLE IF NOT EXISTS counties (
             id SERIAL PRIMARY KEY,
@@ -187,10 +192,10 @@ app.get('/api/init-db', async (req, res) => {
         );
      `);
 
-    res.send("✅ Database tables created successfully!");
+    res.send("✅ Database updated! 'firebase_uid' column added successfully.");
   } catch (err) {
     console.error(err);
-    res.status(500).send("❌ Database creation failed: " + err.message);
+    res.status(500).send("❌ Database update failed: " + err.message);
   }
 });
 
@@ -200,8 +205,8 @@ app.post('/api/login', verifyToken, async (req, res) => {
     let user = await db.query('SELECT * FROM users WHERE email = $1', [email]);
     if (user.rows.length === 0) {
       user = await db.query(
-        "INSERT INTO users (id, email, role, firebase_uid, created_at) VALUES ($1, $2, 'doctor', $3, NOW()) RETURNING *",
-        [uid, email, uid]
+        "INSERT INTO users (email, role, firebase_uid) VALUES ($1, 'doctor', $2) RETURNING *",
+        [email, uid]
       );
     }
     res.json({ role: user.rows[0].role });
@@ -211,13 +216,10 @@ app.post('/api/login', verifyToken, async (req, res) => {
   }
 });
 
-// ... (Rest of your routes stay the same as your previous file) ...
-// Ensure register, patients, etc. are below here.
-
-// NOTE: For the sake of space in this reply, I'm assuming you will keep 
-// the rest of the routes (register, patients, analytics, settings) 
-// exactly as they were in your previous paste. They were correct.
-// Make sure you don't delete them!
+// ... (KEEP ALL YOUR OTHER ROUTES HERE: register, patients, settings, analytics) ...
+// DO NOT DELETE THE OTHER ROUTES!
+// For brevity, I assume you are pasting this OVER your existing file but
+// keeping the routes you had before.
 
 app.post('/api/register', verifyToken, async (req, res) => {
     const { role, county_id } = req.body;
