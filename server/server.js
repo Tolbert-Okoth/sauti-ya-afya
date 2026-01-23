@@ -1,6 +1,6 @@
 /* server/server.js */
 const express = require('express');
-const cors = require('cors');
+const cors = require('cors'); // ✅ Use the standard package
 const { Pool } = require('pg');
 const admin = require('firebase-admin'); 
 const multer = require('multer');
@@ -39,20 +39,41 @@ try {
 }
 
 // ==========================================
-// 2. MIDDLEWARE (🛡️ CORS FIX)
+// 2. MIDDLEWARE (🛡️ STANDARD CORS SECURITY)
 // ==========================================
 
-// ✅ ALLOW ALL ORIGINS (Fixes CORS for Vercel)
-// "origin: true" reflects the request origin, allowing Vercel to connect.
-app.use(cors({
-  origin: true, 
-  credentials: true,
+// 🔒 TRUSTED DOMAINS ONLY
+const allowedOrigins = [
+  "http://localhost:3000",                                      // Localhost
+  "https://sautiyaafya.vercel.app",                             // Production Vercel
+  "https://sauti-ya-afya-git-main-tolberts-projects.vercel.app" // Preview Vercel
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, or Postman)
+    if (!origin) return callback(null, true);
+    
+    // Check if the origin is in our trusted list
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    } else {
+      // 🔒 BLOCK anything else
+      console.log(`Blocked by CORS: ${origin}`); // Log for debugging
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true, // Allow cookies/tokens
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+};
+
+// Apply CORS globally (Handles Preflight automatically)
+app.use(cors(corsOptions));
 
 // ❌ REMOVED: app.options('*', cors()) 
-// (This line was causing the "PathError" crash on Render)
+// That specific line caused the "PathError" crash. 
+// app.use(cors()) above handles OPTIONS requests just fine on its own.
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -115,12 +136,8 @@ const verifyToken = async (req, res, next) => {
 // 7. ROUTES
 // ==========================================
 
-app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Cloud Backend (Cloudinary) Online"));
-
-// ✅ UPTIME ROBOT HEALTH CHECK
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
+app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Standardized Backend Online"));
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.post('/api/login', verifyToken, async (req, res) => {
   const { email, uid } = req.user;
@@ -140,7 +157,7 @@ app.post('/api/login', verifyToken, async (req, res) => {
 
 app.post('/api/register', verifyToken, async (req, res) => {
     const { role, county_id } = req.body;
-    const { email, uid } = req.user; // Get from token
+    const { email, uid } = req.user;
     try {
         const newUser = await db.query(
             "INSERT INTO users (firebase_uid, email, role, county_id) VALUES ($1, $2, $3, $4) RETURNING *",
@@ -152,7 +169,6 @@ app.post('/api/register', verifyToken, async (req, res) => {
         res.status(500).json({ message: "Server Error" });
     }
 });
-
 
 app.get('/api/counties', verifyToken, async (req, res) => {
     try {
