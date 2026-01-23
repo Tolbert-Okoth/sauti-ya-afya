@@ -88,9 +88,43 @@ const dbConfig = process.env.DATABASE_URL
 const db = new Pool(dbConfig);
 
 // ==========================================
-// 4. DATABASE RESET & INIT
+// 4. DATABASE SEEDING & RESET
 // ==========================================
 
+// 🛠️ SEED ROLES ROUTE (Run this to set up Admins/Doctors)
+app.get('/api/seed-roles', async (req, res) => {
+  try {
+    console.log("⚠️ SEEDING USER ROLES...");
+
+    // 👇 ADD YOUR SPECIAL USERS HERE
+    const specialUsers = [
+      { email: 'tolbert836@gmail.com', role: 'ADMIN', uid: 'admin_tolbert_uid' },
+      { email: 'osumba30@gmail.com', role: 'DOCTOR', uid: 'doc_osumba_uid' }
+      // Add more lines here later: { email: 'new@gmail.com', role: 'DOCTOR', uid: '...' }
+    ];
+
+    // Loop through the list and insert/update each one
+    let count = 0;
+    for (const user of specialUsers) {
+      await db.query(`
+        INSERT INTO users (email, role, firebase_uid)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (email)
+        DO UPDATE SET 
+          role = EXCLUDED.role; -- Ensures their role is always correct
+      `, [user.email, user.role, user.uid]);
+      count++;
+    }
+
+    console.log(`✅ Seeded ${count} special users.`);
+    res.send(`✅ Database updated! Seeded ${count} users (Admin/Doctor).`);
+  } catch (err) {
+    console.error("❌ Seeding Failed:", err);
+    res.status(500).send("Seeding Failed: " + err.message);
+  }
+});
+
+// 🛠️ HARD RESET ROUTE
 app.get('/api/hard-reset', async (req, res) => {
   try {
     console.log("⚠️ STARTING HARD DATABASE RESET...");
@@ -204,18 +238,22 @@ const verifyToken = async (req, res, next) => {
 app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Backend Online"));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// ✅ BULLETPROOF LOGIN ROUTE
+// ✅ SMART LOGIN ROUTE (Connects Seeded Data to Real Login)
 app.post('/api/login', verifyToken, async (req, res) => {
   const { email, uid } = req.user;
   try {
-    // We use "ON CONFLICT" to safely handle race conditions (double clicks)
-    // If the user ID exists, we just update the email and return the user.
-    // If they don't exist, we insert them.
+    // 1. Insert as 'CHW' by default...
+    // 2. BUT 'ON CONFLICT (email)' means: 
+    //    "If this email exists (e.g. Tolbert/Osumba seeded), DON'T overwrite the role. 
+    //    Just update the firebase_uid to the real one so they can log in."
+    
     const user = await db.query(
       `INSERT INTO users (email, role, firebase_uid) 
-       VALUES ($1, 'doctor', $2) 
-       ON CONFLICT (firebase_uid) 
-       DO UPDATE SET email = EXCLUDED.email 
+       VALUES ($1, 'CHW', $2) 
+       ON CONFLICT (email) 
+       DO UPDATE SET 
+         firebase_uid = EXCLUDED.firebase_uid
+         -- Note: We DO NOT update 'role' here. We keep whatever is in the DB.
        RETURNING *`,
       [email, uid]
     );
