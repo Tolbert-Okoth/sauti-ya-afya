@@ -7,18 +7,18 @@ import axios from 'axios';
 import { FaGoogle, FaUserPlus } from 'react-icons/fa';
 import config from '../config';
 
-const Signup = ({ setRole }) => {
+const Signup = () => {
   const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     email: '',
-    password: '',
-    role: 'CHW',
-    county_id: 1
+    password: ''
   });
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Glass input style (matched with Login)
+  // Glass input style
   const glassInputStyle = {
     background: 'rgba(255,255,255,0.45)',
     border: '1px solid rgba(255,255,255,0.6)',
@@ -33,10 +33,7 @@ const Signup = ({ setRole }) => {
 
     await axios.post(
       `${config.API_BASE_URL}/register`,
-      {
-        role: formData.role,
-        county_id: formData.county_id
-      },
+      {},
       {
         headers: { Authorization: `Bearer ${token}` }
       }
@@ -56,8 +53,7 @@ const Signup = ({ setRole }) => {
       );
 
       await registerInBackend(userCredential.user);
-      setRole(formData.role);
-      navigate(formData.role === 'CHW' ? '/chw' : '/doctor');
+      navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || err.message);
     } finally {
@@ -69,10 +65,9 @@ const Signup = ({ setRole }) => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       await registerInBackend(result.user);
-      setRole(formData.role);
-      navigate(formData.role === 'CHW' ? '/chw' : '/doctor');
+      navigate('/dashboard');
     } catch (err) {
-      setError('Google Signup Failed.');
+      setError('Google signup failed.');
     }
   };
 
@@ -91,7 +86,7 @@ const Signup = ({ setRole }) => {
           </div>
           <h4 className="fw-bold text-dark-brown mb-1">Create Account</h4>
           <p className="text-dark-brown opacity-75 small">
-            Join the SautiYaAfya Network
+            Join the SautiYaAfya Platform
           </p>
         </div>
 
@@ -123,34 +118,6 @@ const Signup = ({ setRole }) => {
               setFormData({ ...formData, password: e.target.value })
             }
           />
-
-          <div className="row mb-3">
-            <div className="col-6">
-              <select
-                className="form-select"
-                style={glassInputStyle}
-                value={formData.role}
-                onChange={(e) =>
-                  setFormData({ ...formData, role: e.target.value })
-                }
-              >
-                <option value="CHW">CHW</option>
-                <option value="DOCTOR">Doctor</option>
-              </select>
-            </div>
-
-            <div className="col-6">
-              <input
-                type="number"
-                className="form-control"
-                style={glassInputStyle}
-                value={formData.county_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, county_id: e.target.value })
-                }
-              />
-            </div>
-          </div>
 
           <button
             type="submit"
