@@ -19,12 +19,12 @@ const Login = ({ setRole }) => {
   const [loading, setLoading] = useState(false);
 
   const glassInputStyle = {
-    background: 'rgba(255,255,255,0.4)',
+    background: 'rgba(255,255,255,0.45)',
     border: '1px solid rgba(255,255,255,0.6)',
     color: '#2d3436',
-    backdropFilter: 'blur(5px)',
+    backdropFilter: 'blur(6px)',
     borderRadius: '12px',
-    padding: '12px'
+    padding: '11px'
   };
 
   const executeLogin = async (user) => {
@@ -42,7 +42,6 @@ const Login = ({ setRole }) => {
       setRole(role);
       navigate(role === 'CHW' ? '/chw' : '/doctor');
     } catch (err) {
-      console.error('Backend Login Error:', err);
       if (err.response?.status === 404) {
         setError('Account not found. Please Sign Up first.');
       } else {
@@ -78,7 +77,7 @@ const Login = ({ setRole }) => {
       } else if (err.code === 'auth/popup-closed-by-user') {
         setError('Login cancelled.');
       } else {
-        setError('Google Login Failed: ' + err.message);
+        setError('Google Login Failed.');
       }
       setLoading(false);
     }
@@ -88,28 +87,28 @@ const Login = ({ setRole }) => {
     if (!email) return setError('Please enter your email first.');
     try {
       await resetPassword(email);
-      setMsg('Password reset email sent! Check your inbox.');
+      setMsg('Password reset email sent!');
       setError('');
     } catch (err) {
-      setError('Error sending reset email: ' + err.message);
+      setError('Error sending reset email.');
     }
   };
 
   return (
     <div className="min-vh-100 d-flex align-items-center justify-content-center">
       <div
-        className="glass-card p-5 shadow-lg"
-        style={{ maxWidth: '420px', width: '90%', borderRadius: '24px' }}
+        className="glass-card p-4 shadow-lg"
+        style={{ maxWidth: '380px', width: '92%', borderRadius: '22px' }}
       >
-        <div className="text-center mb-5">
+        <div className="text-center mb-4">
           <div
-            className="bg-white rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm mb-3"
-            style={{ width: '70px', height: '70px' }}
+            className="bg-white rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm mb-2"
+            style={{ width: '64px', height: '64px' }}
           >
-            <FaStethoscope className="text-primary fs-2" />
+            <FaStethoscope className="text-primary fs-4" />
           </div>
-          <h3 className="fw-bold text-dark-brown">SautiYaAfya</h3>
-          <p className="text-dark-brown opacity-75 small fw-bold">
+          <h4 className="fw-bold text-dark-brown mb-1">SautiYaAfya</h4>
+          <p className="text-dark-brown opacity-75 small">
             AI Respiratory Triage System
           </p>
         </div>
@@ -142,7 +141,7 @@ const Login = ({ setRole }) => {
             <button
               type="button"
               onClick={handleForgotPassword}
-              className="btn btn-link btn-sm"
+              className="btn btn-link btn-sm p-0"
             >
               Forgot Password?
             </button>
@@ -150,7 +149,7 @@ const Login = ({ setRole }) => {
 
           <button
             type="submit"
-            className="btn btn-primary w-100 rounded-pill"
+            className="btn btn-primary w-100 py-2 rounded-pill"
             disabled={loading}
           >
             {loading ? 'Verifying...' : 'Login to Portal'}
@@ -161,7 +160,7 @@ const Login = ({ setRole }) => {
 
         <button
           onClick={handleGoogleLogin}
-          className="btn bg-white w-100 rounded-pill shadow-sm"
+          className="btn bg-white w-100 py-2 rounded-pill shadow-sm"
           disabled={loading}
         >
           <FaGoogle className="me-2 text-danger" />
@@ -169,8 +168,8 @@ const Login = ({ setRole }) => {
         </button>
 
         <div className="text-center mt-3">
-          <small>
-            New here? <Link to="/signup">Create Account</Link>
+          <small className="text-dark-brown opacity-75">
+            New here? <Link to="/signup" className="fw-bold">Create Account</Link>
           </small>
         </div>
       </div>
