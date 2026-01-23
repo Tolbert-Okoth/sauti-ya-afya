@@ -12,11 +12,21 @@ const Signup = () => {
 
   const [formData, setFormData] = useState({
     email: '',
-    password: ''
+    password: '',
+    confirmPassword: ''
   });
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // ✅ Email regex (RFC-compliant enough for real apps)
+  const emailRegex =
+    /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+  // ✅ Strong password regex
+  // Minimum 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
+  const strongPasswordRegex =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
   // Glass input style
   const glassInputStyle = {
@@ -42,8 +52,24 @@ const Signup = () => {
 
   const handleSignup = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+
+    // 🔐 Frontend validations
+    if (!emailRegex.test(formData.email)) {
+      return setError('Please enter a valid email address.');
+    }
+
+    if (!strongPasswordRegex.test(formData.password)) {
+      return setError(
+        'Password must be at least 8 characters and include uppercase, lowercase, number, and special character.'
+      );
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      return setError('Passwords do not match.');
+    }
+
+    setLoading(true);
 
     try {
       const userCredential = await createUserWithEmailAndPassword(
@@ -116,6 +142,17 @@ const Signup = () => {
             required
             onChange={(e) =>
               setFormData({ ...formData, password: e.target.value })
+            }
+          />
+
+          <input
+            type="password"
+            className="form-control mb-3"
+            placeholder="Confirm Password"
+            style={glassInputStyle}
+            required
+            onChange={(e) =>
+              setFormData({ ...formData, confirmPassword: e.target.value })
             }
           />
 
