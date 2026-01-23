@@ -177,3 +177,6 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
     except Exception as e:
         print(f"❌ ANALYZER CRASHED: {e}")
         return {"status": "error", "message": str(e)}
+    
+# ==========================================
+# 🚀 MAIN EXECUTION
