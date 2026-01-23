@@ -1,6 +1,5 @@
 /* server/server.js */
 const express = require('express');
-const cors = require('cors'); // ✅ Use the standard package
 const { Pool } = require('pg');
 const admin = require('firebase-admin'); 
 const multer = require('multer');
@@ -14,7 +13,6 @@ const app = express();
 // 1. CONFIGURATION
 // ==========================================
 
-// A. Cloudinary Config (Free Storage)
 cloudinary.config({ 
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
   api_key: process.env.CLOUDINARY_API_KEY, 
@@ -22,7 +20,6 @@ cloudinary.config({
   secure: true
 });
 
-// B. Firebase Auth Config
 let serviceAccount;
 try {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -39,47 +36,43 @@ try {
 }
 
 // ==========================================
-// 2. MIDDLEWARE (🛡️ STANDARD CORS SECURITY)
+// 2. THE NUCLEAR CORS FIX (Manual Middleware)
 // ==========================================
 
-// 🔒 TRUSTED DOMAINS ONLY
-const allowedOrigins = [
-  "http://localhost:3000",                                      // Localhost
-  "https://sautiyaafya.vercel.app",                             // Production Vercel
-  "https://sauti-ya-afya-git-main-tolberts-projects.vercel.app" // Preview Vercel
-];
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // LOGGING: Check Render logs to see exactly who is connecting
+  console.log(`[CORS] Request from origin: ${origin} | Method: ${req.method}`);
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, or Postman)
-    if (!origin) return callback(null, true);
-    
-    // Check if the origin is in our trusted list
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      return callback(null, true);
-    } else {
-      // 🔒 BLOCK anything else
-      console.log(`Blocked by CORS: ${origin}`); // Log for debugging
-      return callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true, // Allow cookies/tokens
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-};
+  // 1. Reflect the origin back (Allow whoever is asking)
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
 
-// Apply CORS globally (Handles Preflight automatically)
-app.use(cors(corsOptions));
+  // 2. Allow all standard methods
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
 
-// ❌ REMOVED: app.options('*', cors()) 
-// That specific line caused the "PathError" crash. 
-// app.use(cors()) above handles OPTIONS requests just fine on its own.
+  // 3. Allow headers (Content-Type and Authorization are vital)
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+
+  // 4. Allow credentials (cookies/tokens)
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // 5. Handle "Preflight" (OPTIONS) requests immediately
+  // This stops the browser from blocking the real request
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ==========================================
-// 3. DATABASE CONNECTION (Neon + SSL)
+// 3. DATABASE CONNECTION
 // ==========================================
 const db = new Pool({
   user: process.env.DB_USER || 'postgres',
@@ -91,21 +84,15 @@ const db = new Pool({
 });
 
 // ==========================================
-// 4. MULTER (Memory Storage)
+// 4. MULTER & CLOUDINARY
 // ==========================================
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// ==========================================
-// 5. HELPER: Upload to Cloudinary
-// ==========================================
 const uploadToCloudinary = (buffer, folder = 'audio') => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      { 
-        resource_type: "auto", 
-        folder: folder 
-      },
+      { resource_type: "auto", folder: folder },
       (error, result) => {
         if (error) return reject(error);
         resolve(result);
@@ -118,7 +105,7 @@ const uploadToCloudinary = (buffer, folder = 'audio') => {
 };
 
 // ==========================================
-// 6. AUTH MIDDLEWARE
+// 5. AUTH MIDDLEWARE
 // ==========================================
 const verifyToken = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -133,10 +120,10 @@ const verifyToken = async (req, res, next) => {
 };
 
 // ==========================================
-// 7. ROUTES
+// 6. ROUTES
 // ==========================================
 
-app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Standardized Backend Online"));
+app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Backend (Manual CORS) Online"));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.post('/api/login', verifyToken, async (req, res) => {
@@ -183,7 +170,6 @@ app.get('/api/system-config', verifyToken, async (req, res) => {
     res.json({ confidence_threshold: 0.75 });
 });
 
-// ✅ MODIFIED: UPLOAD ROUTE (Using Cloudinary)
 app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) => {
   try {
     const { 
@@ -193,7 +179,6 @@ app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) =
     
     let recordingUrl = null;
 
-    // --- CLOUDINARY UPLOAD LOGIC ---
     if (req.file) {
         console.log("Uploading to Cloudinary...");
         const result = await uploadToCloudinary(req.file.buffer, 'sautiyaafya-audio');
@@ -242,7 +227,6 @@ app.get('/api/patients', verifyToken, async (req, res) => {
     }
 });
 
-// Admin & Analytics routes
 app.get('/api/users', verifyToken, async (req, res) => {
   try {
     const result = await db.query('SELECT id, email, role, county_id, firebase_uid FROM users ORDER BY role');
@@ -271,7 +255,6 @@ app.get('/api/analytics', verifyToken, async (req, res) => {
   }
 });
 
-// Settings routes
 app.get('/api/settings', verifyToken, async (req, res) => {
   try {
     const { email } = req.user;
