@@ -37,19 +37,25 @@ try {
 }
 
 // ==========================================
-// 2. MIDDLEWARE
+// 2. MIDDLEWARE (🛡️ DYNAMIC CORS FIX)
 // ==========================================
 
 const allowedOrigins = [
-  "http://localhost:3000",                                      
-  "https://sautiyaafya.vercel.app",                             
-  "https://sauti-ya-afya-git-main-tolberts-projects.vercel.app" 
+  "http://localhost:3000",
+  "https://sautiyaafya.vercel.app"
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, or Postman)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    
+    // ✅ DYNAMIC CHECK: Allow Localhost OR ANY Vercel App
+    // This fixes the issue where Vercel changes the URL on every commit
+    if (
+      allowedOrigins.indexOf(origin) !== -1 || 
+      origin.endsWith(".vercel.app") 
+    ) {
       return callback(null, true);
     } else {
       console.log(`Blocked by CORS: ${origin}`);
@@ -229,7 +235,6 @@ app.post('/api/login', verifyToken, async (req, res) => {
 
 // ... (KEEP ALL OTHER ROUTES: register, patients, settings, etc.) ...
 // NOTE: Ensure you keep the rest of your routes below this line!
-// I am truncating them here for clarity, but DO NOT DELETE THEM from your file.
 
 app.post('/api/register', verifyToken, async (req, res) => {
     const { role, county_id } = req.body;
