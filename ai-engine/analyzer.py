@@ -3,7 +3,6 @@ matplotlib.use('Agg') # Force Headless Mode
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="librosa")
 
-import matplotlib.pyplot as plt
 import librosa
 import librosa.display
 import numpy as np
@@ -17,7 +16,7 @@ import torch.nn.functional as F
 import gc # Garbage Collection
 
 # ==========================================
-# 🧠 AI MODEL LOADER (OPTIMIZED)
+# 🧠 AI MODEL LOADER
 # ==========================================
 print("🔄 Loading Phase 5 Native Brain...")
 device = torch.device("cpu")
@@ -49,15 +48,15 @@ preprocess_ai = transforms.Compose([
 ])
 
 # ==========================================
-# 🔬 ANALYZER FUNCTION
+# 🔬 ANALYZER FUNCTION (ULTRA-LIGHT)
 # ==========================================
 def analyze_audio(file_path, sensitivity_threshold=0.75):
     try:
         print("--- [STEP 1] Starting Analysis ---")
         
-        # 1. LOAD AUDIO (Optimized)
-        # We load only the first 15 seconds to save RAM (Lung sounds repeat anyway)
-        y, sr = librosa.load(file_path, sr=16000, duration=15) 
+        # 1. LOAD AUDIO (Strict 5 Seconds Limit)
+        # ⚠️ OPTIMIZATION: Reducing to 5s drastically lowers RAM usage
+        y, sr = librosa.load(file_path, sr=16000, duration=5.0) 
         duration = float(librosa.get_duration(y=y, sr=sr))
         print(f"--- [STEP 2] Audio Loaded ({duration}s) ---")
 
@@ -74,34 +73,27 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         
         print("--- [STEP 3] DSP Complete ---")
 
-        # 3. GENERATE SPECTROGRAM (Memory Heavy)
+        # 3. GENERATE SPECTROGRAM DATA (No Image)
         S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
         S_dB = librosa.power_to_db(S, ref=np.max)
         
-        # Free up 'y' immediately since we have the spectrogram
+        # 🧹 AGGRESSIVE CLEANUP
         del y, y_harmonic, y_percussive
         gc.collect()
 
-        # Generate Image
-        plt.figure(figsize=(10, 4))
-        librosa.display.specshow(S_dB, sr=sr, x_axis='time', y_axis='mel', fmax=4000)
-        plt.colorbar(format='%+2.0f dB')
-        plt.tight_layout()
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        spectrogram_b64 = base64.b64encode(buf.read()).decode('utf-8')
-        plt.close('all') 
-        buf.close()
+        # ⚠️ DISABLED VISUALIZER TO PREVENT CRASH ⚠️
+        # We send an empty string instead of the image.
+        spectrogram_b64 = "" 
         
-        print("--- [STEP 4] Spectrogram Generated ---")
+        print("--- [STEP 4] Spectrogram Data Ready (Image Skipped) ---")
 
-        # 4. AI INFERENCE
+        # 4. AI INFERENCE (Optimized)
         ai_diagnosis = "Unknown"
         ai_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
         
         if ai_available:
-            # Create tiny version for AI
+            # Generate tiny temp image just for AI logic
+            import matplotlib.pyplot as plt
             plt.figure(figsize=(2.24, 2.24), dpi=100) 
             plt.gca().set_axis_off()
             plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
@@ -111,7 +103,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
             buf_ai = io.BytesIO()
             plt.savefig(buf_ai, format='png', bbox_inches='tight', pad_inches=0)
             buf_ai.seek(0)
-            plt.close('all')
+            plt.close('all') # Force close
             
             # Predict
             img = Image.open(buf_ai).convert('RGB')
@@ -139,7 +131,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
             result_tag = "Wheeze (DSP)"
             final_risk = "Medium"
             detail = "Musical sounds detected (Narrow Airways)."
-        elif rms_variance > (0.005 / strictness): # Simplified Logic
+        elif rms_variance > (0.005 / strictness): 
             result_tag = "Crackles (DSP)"
             final_risk = "High"
             detail = "Fluid sounds detected."
@@ -167,7 +159,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                 "prob_normal": round(ai_probs["Normal"], 3)
             },
             "visualizer": {
-                "spectrogram_image": f"data:image/png;base64,{spectrogram_b64}"
+                "spectrogram_image": "" # Empty for now
             },
             "preliminary_assessment": result_tag,
             "risk_level_output": final_risk,
@@ -177,6 +169,3 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
     except Exception as e:
         print(f"❌ ANALYZER CRASHED: {e}")
         return {"status": "error", "message": str(e)}
-    
-# ==========================================
-# 🚀 MAIN EXECUTION
