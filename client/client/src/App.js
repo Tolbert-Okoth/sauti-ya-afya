@@ -6,11 +6,9 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebase';
 import axios from 'axios';
 import { LanguageProvider } from './context/LanguageContext'; 
-import config from './config'; // 👈 IMPORT CONFIG
+import config from './config';
 
-// ==========================================
-// 🧩 STANDARD COMPONENTS
-// ==========================================
+// COMPONENTS
 import Layout from './components/Layout';
 import SmartRecorder from './components/SmartRecorder';
 import DoctorDashboard from './components/DoctorDashboard';
@@ -20,9 +18,7 @@ import Analytics from './components/Analytics';
 import Login from './components/Login';
 import Signup from './components/Signup';
 
-// ==========================================
-// ⚙️ SETTINGS COMPONENTS
-// ==========================================
+// SETTINGS
 import SettingsHub from './components/SettingsHub';
 import DeviceSettings from './components/DeviceSettings';
 import SyncSettings from './components/SyncSettings';
@@ -45,11 +41,18 @@ function App() {
       if (currentUser) {
         try {
           const token = await currentUser.getIdToken();
-          // ✅ FIX: Use dynamic config.API_BASE_URL
           const res = await axios.post(`${config.API_BASE_URL}/login`, {}, {
             headers: { Authorization: `Bearer ${token}` }
           });
-          setUserRole(res.data.role);
+          
+          // ✅ FIX: Normalize role to UPPERCASE to prevent Redirect Loops
+          if (res.data.role) {
+            console.log("Role loaded:", res.data.role.toUpperCase()); // Debug Log
+            setUserRole(res.data.role.toUpperCase());
+          } else {
+            setUserRole(null);
+          }
+
         } catch (err) {
           console.error("Session restore failed", err);
           setUserRole(null);
@@ -67,27 +70,34 @@ function App() {
     setUserRole(null);
   };
 
-  if (loading) return <div className="text-center mt-5 text-dark-brown">Loading SautiYaAfya...</div>;
+  // ✅ LOADING SCREEN (Prevents premature redirects)
+  if (loading) return (
+    <div className="d-flex justify-content-center align-items-center vh-100">
+      <div className="spinner-border text-primary" role="status">
+        <span className="visually-hidden">Loading...</span>
+      </div>
+    </div>
+  );
 
   return (
-    <LanguageProvider> {/* 1. WRAP APP IN PROVIDER */}
+    <LanguageProvider>
       <Router>
         <div className="app-container">
           <Routes>
             
-            {/* ========================================================
-                1. MAIN LOGIN ROUTE
-               ======================================================== */}
+            {/* MAIN LOGIN ROUTE */}
             <Route 
               path="/" 
               element={
                 !userRole ? (
                   <Login setRole={setUserRole} />
                 ) : (
+                  // ✅ FIX: Robust Redirect Logic
                   <Navigate to={
                     userRole === 'CHW' ? "/chw" : 
                     userRole === 'DOCTOR' ? "/doctor" : 
-                    "/admin"
+                    userRole === 'ADMIN' ? "/admin" :
+                    "/" // Fallback (prevents crash if role is unknown)
                   } />
                 )
               } 
@@ -95,9 +105,7 @@ function App() {
 
             <Route path="/signup" element={<Signup setRole={setUserRole} />} />
             
-            {/* ========================================================
-                2. CHW ROUTES (RESTRICTED)
-               ======================================================== */}
+            {/* CHW ROUTES */}
             <Route path="/chw" element={
               userRole === 'CHW' ? (
                 <Layout role="CHW" logout={logout}>
@@ -106,9 +114,7 @@ function App() {
               ) : <Navigate to="/" />
             } />
 
-            {/* ========================================================
-                3. DOCTOR ROUTES (EXPANDED)
-               ======================================================== */}
+            {/* DOCTOR ROUTES */}
             <Route path="/doctor" element={
               userRole === 'DOCTOR' ? (
                 <Layout role="DOCTOR" logout={logout}>
@@ -133,9 +139,7 @@ function App() {
               ) : <Navigate to="/" />
             } />
 
-            {/* ========================================================
-                4. ADMIN ROUTES
-               ======================================================== */}
+            {/* ADMIN ROUTES */}
             <Route path="/admin" element={
               userRole === 'ADMIN' ? (
                 <Layout role="ADMIN" logout={logout}>
@@ -144,12 +148,7 @@ function App() {
               ) : <Navigate to="/" />
             } />
 
-
-            {/* ========================================================
-                5. SETTINGS ROUTES (Shared + Role Protected)
-               ======================================================== */}
-            
-            {/* Main Settings Menu (All Roles) */}
+            {/* SETTINGS ROUTES */}
             <Route path="/settings" element={
               userRole ? (
                 <Layout role={userRole} logout={logout}>
@@ -158,7 +157,6 @@ function App() {
               ) : <Navigate to="/" />
             } />
 
-            {/* Device Settings (CHW Only) */}
             <Route path="/settings/device" element={
               userRole === 'CHW' ? (
                 <Layout role={userRole} logout={logout}>
@@ -167,7 +165,6 @@ function App() {
               ) : <Navigate to="/settings" />
             } />
 
-            {/* Sync Settings (Shared) */}
             <Route path="/settings/sync" element={
               userRole ? (
                 <Layout role={userRole} logout={logout}>
@@ -176,7 +173,6 @@ function App() {
               ) : <Navigate to="/" />
             } />
 
-            {/* Admin Config (Admin Only) */}
             <Route path="/settings/admin-config" element={
               userRole === 'ADMIN' ? (
                 <Layout role={userRole} logout={logout}>
@@ -185,7 +181,6 @@ function App() {
               ) : <Navigate to="/settings" />
             } />
 
-            {/* Profile (Shared) */}
             <Route path="/settings/profile" element={
               userRole ? (
                 <Layout role={userRole} logout={logout}>
@@ -194,7 +189,6 @@ function App() {
               ) : <Navigate to="/" />
             } />
 
-            {/* Privacy (Shared) */}
             <Route path="/settings/privacy" element={
               userRole ? (
                 <Layout role={userRole} logout={logout}>
@@ -203,7 +197,6 @@ function App() {
               ) : <Navigate to="/" />
             } />
 
-            {/* Language (Shared) */}
             <Route path="/settings/language" element={
               userRole ? (
                 <Layout role={userRole} logout={logout}>
@@ -212,7 +205,6 @@ function App() {
               ) : <Navigate to="/" />
             } />
 
-            {/* About (Shared) */}
             <Route path="/settings/about" element={
               userRole ? (
                 <Layout role={userRole} logout={logout}>
@@ -221,7 +213,6 @@ function App() {
               ) : <Navigate to="/" />
             } />
 
-            {/* Notifications (Doctor Only) */}
             <Route path="/settings/notifications" element={
               userRole === 'DOCTOR' ? (
                 <Layout role={userRole} logout={logout}>
