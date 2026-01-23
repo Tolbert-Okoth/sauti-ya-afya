@@ -19,7 +19,11 @@
 body {
   margin: 0;
   font-family: 'Inter', sans-serif;
-  overflow: hidden; 
+  
+  /* 🛑 FIX: Allow scrolling (Auto), prevent horizontal scroll (Hidden) */
+  overflow-x: hidden; 
+  overflow-y: auto; 
+  
   height: 100vh;
   color: var(--text-main);
 
@@ -35,6 +39,8 @@ body::before {
   top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(10, 61, 98, 0.25); /* Navy tint */
   z-index: -1;
+  pointer-events: none; /* Let clicks pass through */
+  position: fixed; /* Fix overlay so it doesn't scroll away */
 }
 
 /* 3. The Glass Container */

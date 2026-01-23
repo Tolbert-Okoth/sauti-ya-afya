@@ -8,7 +8,7 @@ import {
 import { auth, googleProvider, resetPassword } from '../firebase';
 import axios from 'axios';
 import { FaGoogle, FaStethoscope } from 'react-icons/fa';
-import config from '../config'; // 👈 IMPORT CONFIGURATION
+import config from '../config'; 
 
 const Login = ({ setRole }) => {
   const navigate = useNavigate();
@@ -18,22 +18,11 @@ const Login = ({ setRole }) => {
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Custom Glass Input Style
-  const glassInputStyle = {
-      background: 'rgba(255,255,255,0.4)',
-      border: '1px solid rgba(255,255,255,0.6)',
-      color: '#2d3436',
-      backdropFilter: 'blur(5px)',
-      borderRadius: '12px',
-      padding: '12px'
-  };
-
   const executeLogin = async (user) => {
     try {
       setLoading(true);
       const token = await user.getIdToken();
       
-      // ✅ FIX: Use dynamic config.API_BASE_URL instead of localhost
       const response = await axios.post(`${config.API_BASE_URL}/login`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -68,24 +57,14 @@ const Login = ({ setRole }) => {
 
   const handleGoogleLogin = async () => {
     setError('');
-    
-    // IMPORTANT: Do NOT set loading=true here. 
-    // Updating state before the popup causes browsers to block it.
-    
     try {
-      // 1. Open Popup IMMEDIATELY
       const result = await signInWithPopup(auth, googleProvider);
-      
-      // 2. NOW we can show loading and process the user
       setLoading(true);
       await executeLogin(result.user);
     } catch (err) {
       console.error("Google Popup Error:", err);
-      
       if (err.code === 'auth/popup-blocked') {
-         setError("Popup blocked! Please allow popups for this site in your browser address bar.");
-      } else if (err.code === 'auth/popup-closed-by-user') {
-         setError("Login cancelled.");
+         setError("Popup blocked! Please allow popups.");
       } else {
          setError("Google Login Failed: " + err.message);
       }
@@ -105,39 +84,40 @@ const Login = ({ setRole }) => {
   };
 
   return (
-    <div className="min-vh-100 d-flex align-items-center justify-content-center">
+    // 1. New Wrapper Class (Fixes Centering)
+    <div className="login-page-wrapper">
       
-      <div className="glass-card p-5 shadow-lg position-relative overflow-hidden" style={{ maxWidth: '420px', width: '90%', borderRadius: '24px' }}>
+      {/* 2. New Compact Card Class (Fixes Stretching) */}
+      <div className="login-card-compact shadow-lg position-relative overflow-hidden">
         
-        <div className="text-center mb-5 position-relative">
-            <div className="bg-white rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm mb-3" style={{width: '70px', height: '70px'}}>
-                <FaStethoscope className="text-primary fs-2" />
+        {/* Header - Reduced Margins */}
+        <div className="text-center mb-4">
+            <div className="login-header-icon bg-white rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm mb-3" style={{width: '60px', height: '60px'}}>
+                <FaStethoscope className="text-primary fs-3" />
             </div>
-            <h3 className="fw-bold text-dark-brown">SautiYaAfya</h3>
-            <p className="text-dark-brown opacity-75 small fw-bold">AI Respiratory Triage System</p>
+            <h3 className="fw-bold text-dark-brown mb-1">SautiYaAfya</h3>
+            <p className="text-dark-brown opacity-75 small fw-bold mb-0">AI Respiratory Triage System</p>
         </div>
         
-        {error && <div className="alert alert-danger small border-0 shadow-sm" style={{background: 'rgba(220, 53, 69, 0.9)', color: 'white'}}>{error}</div>}
-        {msg && <div className="alert alert-success small border-0 shadow-sm" style={{background: 'rgba(46, 204, 113, 0.9)', color: 'white'}}>{msg}</div>}
+        {error && <div className="alert alert-danger small py-2 border-0 shadow-sm mb-3">{error}</div>}
+        {msg && <div className="alert alert-success small py-2 border-0 shadow-sm mb-3">{msg}</div>}
 
         <form onSubmit={handleEmailLogin}>
           <div className="mb-3">
             <input 
               type="email" 
-              className="form-control" 
+              className="form-control login-input-glass"
               placeholder="Email Address"
               required
-              style={glassInputStyle}
               value={email} onChange={(e) => setEmail(e.target.value)}
             />
           </div>
-          <div className="mb-4">
+          <div className="mb-3">
             <input 
               type="password" 
-              className="form-control" 
+              className="form-control login-input-glass"
               placeholder="Password"
               required
-              style={glassInputStyle}
               value={password} onChange={(e) => setPassword(e.target.value)}
             />
             <div className="text-end mt-2">
