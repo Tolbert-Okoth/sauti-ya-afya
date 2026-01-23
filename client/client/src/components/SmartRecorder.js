@@ -39,10 +39,8 @@ const SmartRecorder = ({ onLogout }) => {
   const audioChunksRef = useRef([]);
   const animationRef = useRef(null);
 
-  // 🛑 FIX 1: REMOVED 'backdropFilter' (Causes Dropdown Glitches)
-  // We use simple transparency instead. It looks the same but is stable.
   const glassInputStyle = {
-      background: 'rgba(255, 255, 255, 0.7)', // Slightly more opaque for readability
+      background: 'rgba(255, 255, 255, 0.7)', 
       border: '1px solid rgba(255, 255, 255, 0.5)',
       color: '#2d3436',
       borderRadius: '8px',
@@ -174,7 +172,12 @@ const SmartRecorder = ({ onLogout }) => {
       pythonFormData.append('symptoms', patientData.symptoms || "None reported");
       pythonFormData.append('threshold', systemConfig.confidence_threshold);
 
-      const aiRes = await axios.post(`${config.AI_URL}/analyze`, pythonFormData);
+      // 🛑 DEBUG: FORCE LIVE URL & LOG IT
+      console.log("🚀 SENDING REQUEST TO: https://sauti-ya-afya-1.onrender.com/analyze");
+      
+      const aiRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
+      
+      console.log("✅ RESPONSE RECEIVED:", aiRes.data);
       const aiResult = aiRes.data;
       setAnalysis(aiResult);
       setSaveStatus('saving');
@@ -203,8 +206,9 @@ const SmartRecorder = ({ onLogout }) => {
       setSaveStatus('saved');
 
     } catch (err) {
-      console.error(err);
-      alert("Analysis Failed. Check server connection.");
+      console.error("❌ UPLOAD ERROR:", err);
+      // 🛑 SHOW ERROR TO USER
+      alert(`Analysis Failed: ${err.message}`);
       setSaveStatus('error');
     } finally {
       setLoading(false);
