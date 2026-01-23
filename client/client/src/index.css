@@ -1,134 +1,73 @@
 /* client/src/index.css */
 
-/* 1. Variables & Global Theme */
 :root {
-  /* GLASSMOPHISM UTILS */
   --glass-bg: rgba(255, 255, 255, 0.75);
   --glass-card-bg: rgba(255, 255, 255, 0.5);
   --glass-border: 1px solid rgba(255, 255, 255, 0.8);
-  --glass-shadow: 0 8px 32px 0 rgba(14, 33, 62, 0.15); 
-  
-  /* HEALTHCARE PALETTE */
-  --accent-green: #00b894;  
-  --accent-blue: #0984e3;   
-  --text-main: #2d3436;     
-  --text-medical: #2c3e50;  
+  --glass-shadow: 0 8px 32px rgba(14, 33, 62, 0.15);
+
+  --accent-green: #00b894;
+  --accent-blue: #0984e3;
+  --text-main: #2d3436;
+  --text-medical: #2c3e50;
 }
 
-/* 2. The Stethoscope Background */
 body {
   margin: 0;
   font-family: 'Inter', sans-serif;
-  
-  /* 🛑 FIX: Allow scrolling (Auto), prevent horizontal scroll (Hidden) */
-  overflow-x: hidden; 
-  overflow-y: auto; 
-  
   height: 100vh;
   color: var(--text-main);
-
-  /* === CHOSEN IMAGE: Stethoscope on Blue === */
-  background: url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop') no-repeat center center fixed;
+  background: url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
+    no-repeat center center fixed;
   background-size: cover;
 }
 
-/* Darker blue overlay so the white glass pops */
 body::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(10, 61, 98, 0.25); /* Navy tint */
+  inset: 0;
+  background: rgba(10, 61, 98, 0.25);
   z-index: -1;
-  pointer-events: none; /* Let clicks pass through */
-  position: fixed; /* Fix overlay so it doesn't scroll away */
 }
 
-/* 3. The Glass Container */
 .glass-window {
-  background: rgba(255, 255, 255, 0.35); /* Slightly clearer window */
+  background: rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
   border-radius: 24px;
-  overflow: hidden;
-  height: 90vh; 
+  height: 90vh;
   width: 95vw;
-  margin: 5vh auto; 
+  margin: 5vh auto;
   display: flex;
 }
 
-/* 📱 MOBILE OVERRIDE FOR GLASS WINDOW */
 @media (max-width: 768px) {
   .glass-window {
     width: 100vw;
     height: 100vh;
     margin: 0;
     border-radius: 0;
-    border: none;
-    flex-direction: column; /* Stack sidebar and content */
-  }
-  
-  /* Enable scrolling on body for mobile if needed */
-  body {
-    overflow: auto;
+    flex-direction: column;
   }
 }
 
-/* 4. Glass Cards */
 .glass-card {
-  background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.8),
+    rgba(255, 255, 255, 0.4)
+  );
   border-radius: 16px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-  transition: transform 0.2s;
-}
-.glass-card:hover {
-  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
-/* 5. Navigation Styling */
-.glass-nav-link {
-  color: var(--text-medical);
-  font-weight: 600; /* Bold for readability */
-  padding: 0.8rem 1rem;
-  margin-bottom: 0.5rem;
-  border-radius: 12px;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  text-decoration: none;
-  opacity: 0.85;
+.text-dark-brown {
+  color: var(--text-medical) !important;
 }
 
-.glass-nav-link:hover {
-  background: rgba(255, 255, 255, 0.7);
-  color: var(--accent-blue);
-  opacity: 1;
+::-webkit-scrollbar {
+  width: 6px;
 }
-
-.glass-nav-link.active {
-  background: rgba(255, 255, 255, 0.9);
-  border-left: 4px solid var(--accent-blue);
-  color: var(--accent-blue);
-  font-weight: 700;
-  opacity: 1;
-  box-shadow: 0 4px 10px rgba(9, 132, 227, 0.15);
-}
-
-/* 6. Mappings */
-.text-dark-brown { color: var(--text-medical) !important; }
-.text-accent { color: var(--accent-blue) !important; }
-
-/* 7. Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(9, 132, 227, 0.4); border-radius: 10px; }
-
-/* 8. Animations */
-.animate-pulse { animation: pulse-red 2s infinite; }
-@keyframes pulse-red {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
-  70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+::-webkit-scrollbar-thumb {
+  background: rgba(9, 132, 227, 0.4);
+  border-radius: 10px;
 }
