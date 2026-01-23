@@ -1,6 +1,12 @@
 /* client/src/index.css */
 
 :root {
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-card-bg: rgba(255, 255, 255, 0.5);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.8);
+  --glass-shadow: 0 8px 32px rgba(14, 33, 62, 0.15);
+
+  --accent-green: #00b894;
   --accent-blue: #0984e3;
   --text-main: #2d3436;
   --text-medical: #2c3e50;
@@ -14,7 +20,6 @@ body {
   background: url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
     no-repeat center center fixed;
   background-size: cover;
-  overflow: hidden;
 }
 
 body::before {
@@ -25,23 +30,44 @@ body::before {
   z-index: -1;
 }
 
+.glass-window {
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(12px);
+  border-radius: 24px;
+  height: 90vh;
+  width: 95vw;
+  margin: 5vh auto;
+  display: flex;
+}
+
+@media (max-width: 768px) {
+  .glass-window {
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    border-radius: 0;
+    flex-direction: column;
+  }
+}
+
 .glass-card {
   background: linear-gradient(
     135deg,
-    rgba(255,255,255,0.85),
-    rgba(255,255,255,0.45)
+    rgba(255, 255, 255, 0.8),
+    rgba(255, 255, 255, 0.4)
   );
-  border: 1px solid rgba(255,255,255,0.9);
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 .text-dark-brown {
   color: var(--text-medical) !important;
 }
 
-@media (max-width: 768px) {
-  body {
-    overflow: auto;
-  }
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(9, 132, 227, 0.4);
+  border-radius: 10px;
 }
