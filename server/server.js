@@ -14,7 +14,6 @@ const app = express();
 // 1. CONFIGURATION
 // ==========================================
 
-// A. Cloudinary Config (Free Storage)
 cloudinary.config({ 
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
   api_key: process.env.CLOUDINARY_API_KEY, 
@@ -22,7 +21,6 @@ cloudinary.config({
   secure: true
 });
 
-// B. Firebase Auth Config
 let serviceAccount;
 try {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -42,52 +40,41 @@ try {
 // 2. MIDDLEWARE (🛡️ STANDARD CORS SECURITY)
 // ==========================================
 
-// 🔒 TRUSTED DOMAINS ONLY
 const allowedOrigins = [
-  "http://localhost:3000",                                      // Localhost
-  "https://sautiyaafya.vercel.app",                             // Production Vercel
-  "https://sauti-ya-afya-git-main-tolberts-projects.vercel.app" // Preview Vercel
+  "http://localhost:3000",                                      
+  "https://sautiyaafya.vercel.app",                             
+  "https://sauti-ya-afya-git-main-tolberts-projects.vercel.app" 
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, or Postman)
     if (!origin) return callback(null, true);
-    
-    // Check if the origin is in our trusted list
     if (allowedOrigins.indexOf(origin) !== -1) {
       return callback(null, true);
     } else {
-      // 🔒 BLOCK anything else
-      console.log(`Blocked by CORS: ${origin}`); // Log for debugging
+      console.log(`Blocked by CORS: ${origin}`);
       return callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true, // Allow cookies/tokens
+  credentials: true, 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
 
-// Apply CORS globally (Handles Preflight automatically)
 app.use(cors(corsOptions));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ==========================================
-// 3. DATABASE CONNECTION (✅ FIXED FOR CLOUD)
+// 3. DATABASE CONNECTION
 // ==========================================
-
-// We use a ternary operator to check if we are in the cloud (DATABASE_URL exists)
-// or local (use individual variables).
 const dbConfig = process.env.DATABASE_URL 
   ? {
-      // ☁️ CLOUD CONFIG (Render/Neon)
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false } // Required for secure cloud connections
+      ssl: { rejectUnauthorized: false } 
     }
   : {
-      // 💻 LOCAL FALLBACK
       user: process.env.DB_USER || 'postgres',
       host: process.env.DB_HOST || 'localhost',
       database: process.env.DB_NAME || 'sautiyaafya',
@@ -99,21 +86,15 @@ const dbConfig = process.env.DATABASE_URL
 const db = new Pool(dbConfig);
 
 // ==========================================
-// 4. MULTER (Memory Storage)
+// 4. MULTER & CLOUDINARY
 // ==========================================
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// ==========================================
-// 5. HELPER: Upload to Cloudinary
-// ==========================================
 const uploadToCloudinary = (buffer, folder = 'audio') => {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      { 
-        resource_type: "auto", 
-        folder: folder 
-      },
+      { resource_type: "auto", folder: folder },
       (error, result) => {
         if (error) return reject(error);
         resolve(result);
@@ -126,7 +107,7 @@ const uploadToCloudinary = (buffer, folder = 'audio') => {
 };
 
 // ==========================================
-// 6. AUTH MIDDLEWARE
+// 5. AUTH MIDDLEWARE
 // ==========================================
 const verifyToken = async (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -141,11 +122,77 @@ const verifyToken = async (req, res, next) => {
 };
 
 // ==========================================
-// 7. ROUTES
+// 6. ROUTES
 // ==========================================
 
 app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Standardized Backend Online"));
 app.get('/health', (req, res) => res.status(200).send('OK'));
+
+// 🛠️ DATABASE SETUP ROUTE (RUN THIS ONCE)
+app.get('/api/init-db', async (req, res) => {
+  try {
+    // 1. Create Users Table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        firebase_uid VARCHAR(255) UNIQUE NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        role VARCHAR(50) DEFAULT 'CHW',
+        county_id INTEGER DEFAULT 47,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 2. Create Patients Table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS patients (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255),
+        age INTEGER,
+        location VARCHAR(255),
+        phone VARCHAR(50),
+        symptoms TEXT,
+        diagnosis TEXT,
+        risk_level VARCHAR(50),
+        biomarkers JSONB,
+        spectrogram TEXT,
+        recording_url TEXT,
+        county_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 3. Create Settings Table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS user_settings (
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        language VARCHAR(10) DEFAULT 'en',
+        offline_mode BOOLEAN DEFAULT false,
+        auto_upload BOOLEAN DEFAULT true,
+        notifications_enabled BOOLEAN DEFAULT true,
+        confidence_threshold DECIMAL DEFAULT 0.75,
+        export_moh BOOLEAN DEFAULT false,
+        retain_logs BOOLEAN DEFAULT true,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id)
+      );
+    `);
+
+     // 4. Create Counties Table
+     await db.query(`
+        CREATE TABLE IF NOT EXISTS counties (
+            id SERIAL PRIMARY KEY,
+            code INTEGER,
+            name VARCHAR(255)
+        );
+     `);
+
+    res.send("✅ Database tables created successfully!");
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("❌ Database creation failed: " + err.message);
+  }
+});
 
 app.post('/api/login', verifyToken, async (req, res) => {
   const { email, uid } = req.user;
@@ -159,9 +206,18 @@ app.post('/api/login', verifyToken, async (req, res) => {
     }
     res.json({ role: user.rows[0].role });
   } catch (err) {
+    console.error("Login DB Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
+
+// ... (Rest of your routes stay the same as your previous file) ...
+// Ensure register, patients, etc. are below here.
+
+// NOTE: For the sake of space in this reply, I'm assuming you will keep 
+// the rest of the routes (register, patients, analytics, settings) 
+// exactly as they were in your previous paste. They were correct.
+// Make sure you don't delete them!
 
 app.post('/api/register', verifyToken, async (req, res) => {
     const { role, county_id } = req.body;
@@ -191,7 +247,6 @@ app.get('/api/system-config', verifyToken, async (req, res) => {
     res.json({ confidence_threshold: 0.75 });
 });
 
-// ✅ MODIFIED: UPLOAD ROUTE (Using Cloudinary)
 app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) => {
   try {
     const { 
@@ -201,7 +256,6 @@ app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) =
     
     let recordingUrl = null;
 
-    // --- CLOUDINARY UPLOAD LOGIC ---
     if (req.file) {
         console.log("Uploading to Cloudinary...");
         const result = await uploadToCloudinary(req.file.buffer, 'sautiyaafya-audio');
@@ -250,7 +304,6 @@ app.get('/api/patients', verifyToken, async (req, res) => {
     }
 });
 
-// Admin & Analytics routes
 app.get('/api/users', verifyToken, async (req, res) => {
   try {
     const result = await db.query('SELECT id, email, role, county_id, firebase_uid FROM users ORDER BY role');
@@ -279,7 +332,6 @@ app.get('/api/analytics', verifyToken, async (req, res) => {
   }
 });
 
-// Settings routes
 app.get('/api/settings', verifyToken, async (req, res) => {
   try {
     const { email } = req.user;
