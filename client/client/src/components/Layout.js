@@ -1,20 +1,16 @@
 /* client/src/components/Layout.js */
 import React from 'react';
 import Sidebar from './Sidebar'; 
-import { useTranslation } from '../hooks/useTranslation';
+// import { useTranslation } from '../hooks/useTranslation'; // Uncomment if using translation
 
 const Layout = ({ role, children, logout }) => {
-  const { t } = useTranslation();
-
   return (
-    // 1. MAIN FLEX CONTAINER
-    <div className="glass-window" style={{ display: 'flex', flexDirection: 'row', overflow: 'hidden', alignItems: 'stretch' }}>
+    // 1. MAIN FLEX CONTAINER (The "Glass Window")
+    <div className="glass-window d-flex">
       
-      {/* 🛑 CRITICAL FIX: Sidebar Isolation Wrapper 
-          We wrap the Sidebar in a real <div>. This creates a stable DOM node 
-          so React doesn't crash when toggling the mobile menu elements. 
-      */}
-      <div className="sidebar-wrapper" style={{ height: '100%', flexShrink: 0 }}>
+      {/* SIDEBAR WRAPPER */}
+      {/* We keep this simple wrapper so Sidebar.css handles the fixed/relative positioning */}
+      <div className="sidebar-wrapper">
         <Sidebar role={role} onLogout={logout} />
       </div>
 
@@ -27,16 +23,8 @@ const Layout = ({ role, children, logout }) => {
               width: '100%' 
             }}>
         
-        {/* Header */}
-        <div className="d-flex justify-content-between align-items-center mb-4 pt-5 pt-md-0 px-4 mt-4">
-           <div>
-              <h2 className="fw-bold text-dark-brown mb-0">Dashboard</h2>
-              <p className="text-muted mb-0">Welcome back, {role ? role.toLowerCase() : 'User'}.</p>
-           </div>
-        </div>
-
         {/* Content */}
-        <div className="container-fluid p-4">
+        <div className="container-fluid p-3 p-md-4 pt-5 mt-4 mt-md-0">
           {children}
         </div>
       </main>

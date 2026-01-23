@@ -1,136 +1,82 @@
 /* client/src/components/Sidebar.js */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   FaUserMd, FaChartPie, FaGlobeAfrica, FaCog, 
   FaSignOutAlt, FaBars, FaTimes, FaUserInjured 
 } from 'react-icons/fa'; 
+import './Sidebar.css'; // Import our new styles
 
 const Sidebar = ({ role, onLogout }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-
-  // 1. LISTEN TO SCREEN RESIZE
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   const toggle = () => setIsOpen(!isOpen);
   const closeMenu = () => setIsOpen(false);
 
-  // 2. DYNAMIC STYLES
-  const sidebarStyle = {
-    width: '260px',
-    // height: '100%',  <--- REMOVED DUPLICATE KEY (The dynamic one below handles it)
-    backgroundColor: 'white', 
-    display: 'flex',
-    flexDirection: 'column',
-    padding: '1rem',
-    borderRight: '1px solid rgba(0,0,0,0.1)', 
-    transition: 'all 0.3s ease-in-out',
-    zIndex: 1000,
-    overflowY: 'auto', 
-    
-    // MOBILE OVERRIDES:
-    position: isMobile ? 'fixed' : 'relative',
-    height: isMobile ? '100vh' : '100%', // ✅ Kept this one (Dynamic)
-    left: isMobile ? (isOpen ? '0' : '-100%') : '0', 
-    top: 0,
-    boxShadow: isMobile ? '2px 0 10px rgba(0,0,0,0.1)' : 'none'
-  };
-
-  const toggleBtnStyle = {
-    display: isMobile ? 'flex' : 'none', 
-    position: 'fixed',
-    top: '15px',
-    right: '15px',
-    zIndex: 1100,
-    width: '45px',
-    height: '45px',
-    borderRadius: '50%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    border: '1px solid #ddd',
-    background: 'white',
-    color: '#333',
-    boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-  };
-
-  const backdropStyle = {
-    position: 'fixed',
-    top: 0, left: 0, width: '100vw', height: '100vh',
-    background: 'rgba(0,0,0,0.5)',
-    zIndex: 900,
-    display: (isMobile && isOpen) ? 'block' : 'none',
-    backdropFilter: 'blur(2px)'
-  };
-
   return (
     <>
-      {/* 📱 HAMBURGER BUTTON */}
-      <button style={toggleBtnStyle} onClick={toggle}>
+      {/* 📱 HAMBURGER BUTTON (Visible only on mobile via CSS) */}
+      <button className="mobile-toggle-btn" onClick={toggle}>
         {isOpen ? <FaTimes /> : <FaBars />}
       </button>
 
-      {/* 🌑 BACKDROP */}
-      <div style={backdropStyle} onClick={closeMenu}></div>
+      {/* 🌑 BACKDROP OVERLAY (Visible only when open on mobile) */}
+      <div 
+        className={`mobile-overlay ${isOpen ? 'open' : ''}`} 
+        onClick={closeMenu}
+      />
 
       {/* SIDEBAR CONTAINER */}
-      <div style={sidebarStyle} className="sidebar-manual-container">
+      {/* CSS handles the sliding via the 'open' class */}
+      <div className={`sidebar ${isOpen ? 'open' : ''}`}>
         
-        {/* LOGO */}
-        <a href="/" className="d-flex align-items-center mb-3 text-decoration-none">
-          <span className="fs-4 fw-bold text-primary">SautiYaAfya</span>
-        </a>
-        <hr />
+        {/* LOGO AREA */}
+        <div className="d-flex align-items-center mb-4 px-2">
+           <div style={{width:'35px', height:'35px', background:'#0d6efd', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', marginRight:'10px', color:'white'}}>
+             <FaUserMd />
+           </div>
+           <div>
+             <h5 className="mb-0 fw-bold" style={{color:'#2d3436'}}>SautiYaAfya</h5>
+             <small className="text-muted" style={{fontSize:'0.7rem'}}>AI TRIAGE SYSTEM</small>
+           </div>
+        </div>
         
         {/* NAV LINKS */}
-        <ul className="nav nav-pills flex-column mb-auto">
+        <div className="nav flex-column mb-auto">
           {role === 'DOCTOR' || role === 'ADMIN' ? (
             <>
-              {/* 1. DASHBOARD */}
-              <li className="nav-item">
-                <NavLink to="/doctor" onClick={closeMenu} className={({ isActive }) => `nav-link ${isActive ? 'active' : 'link-dark'}`} end>
-                  <FaGlobeAfrica className="me-2" /> Dashboard
-                </NavLink>
-              </li>
+              <NavLink to="/doctor" onClick={closeMenu} className="nav-link" end>
+                <FaGlobeAfrica className="me-3" /> Dashboard
+              </NavLink>
 
-              {/* 2. PATIENTS LIST (NEW BUTTON) */}
-              <li>
-                <NavLink to="/doctor/patients" onClick={closeMenu} className={({ isActive }) => `nav-link ${isActive ? 'active' : 'link-dark'}`}>
-                  <FaUserInjured className="me-2" /> Patients List
-                </NavLink>
-              </li>
+              <NavLink to="/doctor/patients" onClick={closeMenu} className="nav-link">
+                <FaUserInjured className="me-3" /> Patients List
+              </NavLink>
 
-              {/* 3. ANALYTICS */}
-              <li>
-                <NavLink to="/doctor/analytics" onClick={closeMenu} className={({ isActive }) => `nav-link ${isActive ? 'active' : 'link-dark'}`}>
-                  <FaChartPie className="me-2" /> Analytics
-                </NavLink>
-              </li>
+              <NavLink to="/doctor/analytics" onClick={closeMenu} className="nav-link">
+                <FaChartPie className="me-3" /> Analytics
+              </NavLink>
             </>
           ) : (
-            <li className="nav-item">
-              <NavLink to="/chw" onClick={closeMenu} className={({ isActive }) => `nav-link ${isActive ? 'active' : 'link-dark'}`} end>
-                <FaUserMd className="me-2" /> New Screening
-              </NavLink>
-            </li>
+            <NavLink to="/chw" onClick={closeMenu} className="nav-link" end>
+              <FaUserMd className="me-3" /> New Screening
+            </NavLink>
           )}
           
-          <li className="mt-3">
-            <NavLink to="/settings" onClick={closeMenu} className={({ isActive }) => `nav-link ${isActive ? 'active' : 'link-dark'}`}>
-              <FaCog className="me-2" /> Settings
-            </NavLink>
-          </li>
-        </ul>
-        
-        <hr />
+          <div className="my-2 border-top"></div>
+
+          <NavLink to="/settings" onClick={closeMenu} className="nav-link">
+            <FaCog className="me-3" /> Settings
+          </NavLink>
+        </div>
         
         {/* LOGOUT BUTTON */}
-        <div className="dropdown mt-auto">
-          <button className="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center" onClick={onLogout}>
+        <div className="mt-auto">
+          <button 
+            className="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center py-2" 
+            style={{borderRadius: '12px'}}
+            onClick={onLogout}
+          >
             <FaSignOutAlt className="me-2"/> Log out
           </button>
         </div>

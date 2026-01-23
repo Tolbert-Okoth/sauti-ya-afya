@@ -1,62 +1,102 @@
-/* src/components/Sidebar.css */
+/* client/src/components/Sidebar.css */
 
-/* === DEFAULT DESKTOP BEHAVIOR === */
-.sidebar-container {
-  width: 250px; /* Keep your fixed width for desktop */
-  transition: all 0.3s ease-in-out;
-  position: relative; /* Normal flow on desktop */
+/* 1. DESKTOP SIDEBAR (Default) */
+.sidebar {
+  width: 260px;
+  background: rgba(255, 255, 255, 0.65); /* ❄️ Glass Effect */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(255, 255, 255, 0.8);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  transition: transform 0.3s ease-in-out;
   z-index: 1000;
 }
 
-.mobile-toggle-btn {
-  display: none; /* Hide toggle button on desktop */
+/* Hide Mobile Elements on Desktop */
+.mobile-toggle-btn, .mobile-overlay {
+  display: none;
 }
 
-/* === 📱 MOBILE OVERRIDES (< 768px) === */
+/* Navigation Links Styling */
+.nav-link {
+  color: #2c3e50;
+  font-weight: 500;
+  padding: 10px 15px;
+  border-radius: 12px;
+  margin-bottom: 5px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+}
+
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.5);
+  color: #0984e3;
+  transform: translateX(3px);
+}
+
+.nav-link.active {
+  background: white;
+  color: #0984e3;
+  box-shadow: 0 4px 10px rgba(9, 132, 227, 0.15);
+  font-weight: 700;
+}
+
+/* =================================================
+   📱 MOBILE RESPONSIVENESS (Max-Width: 768px)
+   ================================================= */
 @media (max-width: 768px) {
   
-  /* 1. Force the Sidebar off-screen by default */
-  .sidebar-container {
-    position: fixed; /* Take it out of layout flow so content expands */
+  /* 1. Sidebar becomes a Drawer */
+  .sidebar {
+    position: fixed;
     top: 0;
-    left: -100%; /* Hide completely to the left */
-    height: 100vh;
-    width: 280px; /* Slightly wider for touch */
-    box-shadow: 4px 0 15px rgba(0,0,0,0.1); /* Add shadow for depth */
-  }
-
-  /* 2. Slide it in when 'show-mobile' class is active */
-  .sidebar-container.show-mobile {
     left: 0;
+    height: 100vh;
+    width: 280px;
+    transform: translateX(-100%); /* Hide off-screen left */
+    box-shadow: 4px 0 15px rgba(0,0,0,0.1);
+    background: rgba(255, 255, 255, 0.95); /* More solid on phone */
   }
 
-  /* 3. Show the Hamburger Button */
+  /* 2. Class to Slide it In */
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* 3. The Hamburger Button */
   .mobile-toggle-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    position: fixed; /* Floats on top right */
+    position: fixed;
     top: 15px;
     right: 15px;
     width: 45px;
     height: 45px;
     border-radius: 50%;
-    z-index: 1100; /* Above everything */
+    z-index: 1100;
     background: white;
-    border: 1px solid #ddd;
+    border: none;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     color: #333;
-    font-size: 1.2rem;
+    cursor: pointer;
   }
 
-  /* 4. Backdrop (Dark Overlay) */
-  .sidebar-backdrop {
+  /* 4. Dark Overlay Background */
+  .mobile-overlay {
+    display: none;
     position: fixed;
-    top: 0; 
-    left: 0; 
-    width: 100vw; 
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.5); /* Semi-transparent black */
-    z-index: 900; /* Behind sidebar, above content */
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 900;
     backdrop-filter: blur(2px);
+  }
+
+  .mobile-overlay.open {
+    display: block;
   }
 }
