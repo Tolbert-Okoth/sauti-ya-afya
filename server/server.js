@@ -85,14 +85,13 @@ const dbConfig = process.env.DATABASE_URL
 const db = new Pool(dbConfig);
 
 // ==========================================
-// 4. AUTO-HEAL DATABASE FUNCTION
+// 4. AUTO-HEAL DATABASE FUNCTION (UPDATED)
 // ==========================================
-// This function runs automatically when the server starts.
 const initDB = async () => {
   try {
     console.log("🔄 Checking Database Integrity...");
 
-    // 1. Create Users Table
+    // 1. Create Users Table (If missing)
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -104,13 +103,22 @@ const initDB = async () => {
       );
     `);
 
-    // 2. SELF-HEALING: Add missing column 'firebase_uid' if table existed but column didn't
+    // 2. FIX 1: Add missing column 'firebase_uid'
     await db.query(`
         ALTER TABLE users 
         ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255) UNIQUE;
     `);
 
-    // 3. Create Patients Table
+    // 🚨 3. FIX 2: REPAIR BROKEN ID SEQUENCE (The Fix for "null value in column id")
+    // This forces the ID column to use a sequence generator if it's missing.
+    await db.query(`
+        CREATE SEQUENCE IF NOT EXISTS users_id_seq;
+        ALTER TABLE users ALTER COLUMN id SET DEFAULT nextval('users_id_seq');
+        ALTER SEQUENCE users_id_seq OWNED BY users.id;
+        SELECT setval('users_id_seq', COALESCE(max(id), 0) + 1, false) FROM users;
+    `);
+
+    // 4. Create Patients Table
     await db.query(`
       CREATE TABLE IF NOT EXISTS patients (
         id SERIAL PRIMARY KEY,
@@ -129,7 +137,7 @@ const initDB = async () => {
       );
     `);
 
-    // 4. Create Settings Table
+    // 5. Create Settings Table
     await db.query(`
       CREATE TABLE IF NOT EXISTS user_settings (
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -145,16 +153,7 @@ const initDB = async () => {
       );
     `);
 
-    // 5. Create Counties Table
-    await db.query(`
-        CREATE TABLE IF NOT EXISTS counties (
-            id SERIAL PRIMARY KEY,
-            code INTEGER,
-            name VARCHAR(255)
-        );
-     `);
-
-    console.log("✅ Database Integrity Verified. All tables and columns ready.");
+    console.log("✅ Database Integrity Verified. Sequence Fixed.");
   } catch (err) {
     console.error("❌ Database Init Failed:", err.message);
   }
@@ -208,6 +207,7 @@ app.post('/api/login', verifyToken, async (req, res) => {
   try {
     let user = await db.query('SELECT * FROM users WHERE email = $1', [email]);
     if (user.rows.length === 0) {
+      // ✅ Insert without ID (Database will now auto-generate it thanks to the fix)
       user = await db.query(
         "INSERT INTO users (email, role, firebase_uid) VALUES ($1, 'doctor', $2) RETURNING *",
         [email, uid]
@@ -388,5 +388,5 @@ app.put('/api/settings', verifyToken, async (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`🚀 Orchestrator secured and running on port ${PORT}`);
-  await initDB(); // ✅ AUTOMATIC DATABASE FIX ON STARTUP
+  await initDB(); // ✅ AUTOMATIC FIX ON STARTUP
 });
