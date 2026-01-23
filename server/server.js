@@ -48,11 +48,7 @@ const allowedOrigins = [
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    // Allow Localhost, Specific Domains, OR any Vercel Preview URL
-    if (
-      allowedOrigins.indexOf(origin) !== -1 || 
-      origin.endsWith(".vercel.app") 
-    ) {
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith(".vercel.app")) {
       return callback(null, true);
     } else {
       console.log(`Blocked by CORS: ${origin}`);
@@ -96,14 +92,11 @@ app.get('/api/seed-roles', async (req, res) => {
   try {
     console.log("⚠️ SEEDING USER ROLES...");
 
-    // 👇 ADD YOUR SPECIAL USERS HERE
     const specialUsers = [
       { email: 'tolbert836@gmail.com', role: 'ADMIN', uid: 'admin_tolbert_uid' },
       { email: 'osumba30@gmail.com', role: 'DOCTOR', uid: 'doc_osumba_uid' }
-      // Add more lines here later: { email: 'new@gmail.com', role: 'DOCTOR', uid: '...' }
     ];
 
-    // Loop through the list and insert/update each one
     let count = 0;
     for (const user of specialUsers) {
       await db.query(`
@@ -111,13 +104,53 @@ app.get('/api/seed-roles', async (req, res) => {
         VALUES ($1, $2, $3)
         ON CONFLICT (email)
         DO UPDATE SET 
-          role = EXCLUDED.role; -- Ensures their role is always correct
+          role = EXCLUDED.role; 
       `, [user.email, user.role, user.uid]);
       count++;
     }
 
     console.log(`✅ Seeded ${count} special users.`);
     res.send(`✅ Database updated! Seeded ${count} users (Admin/Doctor).`);
+  } catch (err) {
+    console.error("❌ Seeding Failed:", err);
+    res.status(500).send("Seeding Failed: " + err.message);
+  }
+});
+
+// 🛠️ SEED COUNTIES ROUTE (Run this to fix the Dropdown!)
+app.get('/api/seed-counties', async (req, res) => {
+  const kenyaCounties = [
+    { code: 1, name: "Mombasa" }, { code: 2, name: "Kwale" }, { code: 3, name: "Kilifi" },
+    { code: 4, name: "Tana River" }, { code: 5, name: "Lamu" }, { code: 6, name: "Taita Taveta" },
+    { code: 7, name: "Garissa" }, { code: 8, name: "Wajir" }, { code: 9, name: "Mandera" },
+    { code: 10, name: "Marsabit" }, { code: 11, name: "Isiolo" }, { code: 12, name: "Meru" },
+    { code: 13, name: "Tharaka-Nithi" }, { code: 14, name: "Embu" }, { code: 15, name: "Kitui" },
+    { code: 16, name: "Machakos" }, { code: 17, name: "Makueni" }, { code: 18, name: "Nyandarua" },
+    { code: 19, name: "Nyeri" }, { code: 20, name: "Kirinyaga" }, { code: 21, name: "Murang'a" },
+    { code: 22, name: "Kiambu" }, { code: 23, name: "Turkana" }, { code: 24, name: "West Pokot" },
+    { code: 25, name: "Samburu" }, { code: 26, name: "Trans Nzoia" }, { code: 27, name: "Uasin Gishu" },
+    { code: 28, name: "Elgeyo Marakwet" }, { code: 29, name: "Nandi" }, { code: 30, name: "Baringo" },
+    { code: 31, name: "Laikipia" }, { code: 32, name: "Nakuru" }, { code: 33, name: "Narok" },
+    { code: 34, name: "Kajiado" }, { code: 35, name: "Kericho" }, { code: 36, name: "Bomet" },
+    { code: 37, name: "Kakamega" }, { code: 38, name: "Vihiga" }, { code: 39, name: "Bungoma" },
+    { code: 40, name: "Busia" }, { code: 41, name: "Siaya" }, { code: 42, name: "Kisumu" },
+    { code: 43, name: "Homa Bay" }, { code: 44, name: "Migori" }, { code: 45, name: "Kisii" },
+    { code: 46, name: "Nyamira" }, { code: 47, name: "Nairobi City" }
+  ];
+
+  try {
+    console.log("⚠️ SEEDING COUNTIES...");
+    // Clear bad data first (removes NULL codes)
+    await db.query("DELETE FROM counties WHERE code IS NULL");
+    
+    for (const c of kenyaCounties) {
+        await db.query(
+            `INSERT INTO counties (code, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+            [c.code, c.name]
+        );
+    }
+    console.log("✅ Counties Seeded Successfully!");
+    res.send(`✅ Success! Added ${kenyaCounties.length} counties to the database.`);
   } catch (err) {
     console.error("❌ Seeding Failed:", err);
     res.status(500).send("Seeding Failed: " + err.message);
@@ -145,11 +178,13 @@ app.get('/api/hard-reset', async (req, res) => {
       );
     `);
 
+    // ✅ UPDATED: Added 'dob' and changed 'age' to VARCHAR to handle "5y" strings
     await db.query(`
       CREATE TABLE patients (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255),
-        age INTEGER,
+        age VARCHAR(50), 
+        dob DATE,
         location VARCHAR(255),
         phone VARCHAR(50),
         symptoms TEXT,
@@ -238,26 +273,19 @@ const verifyToken = async (req, res, next) => {
 app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Backend Online"));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// ✅ SMART LOGIN ROUTE (Connects Seeded Data to Real Login)
+// ✅ SMART LOGIN ROUTE
 app.post('/api/login', verifyToken, async (req, res) => {
   const { email, uid } = req.user;
   try {
-    // 1. Insert as 'CHW' by default...
-    // 2. BUT 'ON CONFLICT (email)' means: 
-    //    "If this email exists (e.g. Tolbert/Osumba seeded), DON'T overwrite the role. 
-    //    Just update the firebase_uid to the real one so they can log in."
-    
     const user = await db.query(
       `INSERT INTO users (email, role, firebase_uid) 
        VALUES ($1, 'CHW', $2) 
        ON CONFLICT (email) 
        DO UPDATE SET 
          firebase_uid = EXCLUDED.firebase_uid
-         -- Note: We DO NOT update 'role' here. We keep whatever is in the DB.
        RETURNING *`,
       [email, uid]
     );
-    
     res.json({ role: user.rows[0].role });
   } catch (err) {
     console.error("Login DB Error:", err);
@@ -293,10 +321,11 @@ app.get('/api/system-config', verifyToken, async (req, res) => {
     res.json({ confidence_threshold: 0.75 });
 });
 
+// ✅ SAVE PATIENT (Updated to handle DOB and Age)
 app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) => {
   try {
     const { 
-        name, age, location, phone, symptoms, 
+        name, age, dob, location, phone, symptoms, 
         diagnosis, risk_level, biomarkers, spectrogram 
     } = req.body;
     
@@ -315,13 +344,13 @@ app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) =
 
     const query = `
       INSERT INTO patients 
-      (name, age, location, phone, symptoms, diagnosis, risk_level, biomarkers, county_id, spectrogram, recording_url)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      (name, age, dob, location, phone, symptoms, diagnosis, risk_level, biomarkers, county_id, spectrogram, recording_url)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *;
     `;
     
     const newPatient = await db.query(query, [
-        name, age, location, phone, symptoms, diagnosis, 
+        name, age, dob, location, phone, symptoms, diagnosis, 
         risk_level, biomarkers, county_id, spectrogram, recordingUrl
     ]);
     res.json(newPatient.rows[0]);
