@@ -3,18 +3,18 @@ const isLocal = window.location.hostname === "localhost" || window.location.host
 
 const SERVER_URL = isLocal 
   ? "http://localhost:5000" 
-  : "https://sauti-backend.onrender.com"; // ✅ Points to your Render Node App
+  : "https://sauti-ya-afya.onrender.com"; // ✅ UPDATED: Matches your live Render Backend
 
 const AI_URL = isLocal
   ? "http://localhost:8000"
-  : "https://sauti-ai-engine.onrender.com"; // ✅ Points to your Render Python App
+  : "https://sauti-ya-afya-1.onrender.com"; // ✅ UPDATED: Matches your live AI Engine
 
 const config = {
   SERVER_URL: SERVER_URL,
   API_BASE_URL: `${SERVER_URL}/api`,
   AI_URL: AI_URL, 
   
-  // These load from your .env file locally, or Vercel Environment Variables in prod
+  // Firebase Config (Loads from Vercel Environment Variables)
   FIREBASE: {
     apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
     authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
