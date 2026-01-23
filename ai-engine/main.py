@@ -6,7 +6,6 @@ import uvicorn
 from analyzer import analyze_audio
 
 # --- OPTIONAL: LLM BRIDGE ---
-# We use a try-except block so the app doesn't crash if you haven't created llm_bridge.py yet.
 try:
     from llm_bridge import get_medical_explanation
     HAS_LLM = True
@@ -17,20 +16,18 @@ except ImportError:
 app = FastAPI(title="SautiYaAfya AI Bridge [SECURE]")
 
 # --- 🛡️ SECURITY LAYER 1: PRODUCTION CORS ---
-# We must allow the frontend (Vercel) and Backend (Render) to talk to this API.
+# 🛑 FIX APPLIED: Exact URLs from your error logs
 origins = [
-    "http://localhost:3000",             # Local React
-    "http://localhost:5000",             # Local Node
-    "https://sautiyaafya.vercel.app",    # ☁️ Production Frontend (Update if different)
-    "https://sauti-backend.onrender.com" # ☁️ Production Backend
+    "http://localhost:3000",                  # Local React
+    "http://localhost:5000",                  # Local Node
+    "https://sauti-ya-afya.vercel.app",       # ✅ FIX: Added hyphens to match your Vercel URL
+    "https://sauti-backend.onrender.com"      # Production Backend
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    # ⚠️ For easiest setup on Free Tier, we allow "*" (All origins). 
-    # If you want strict security, change allow_origins=["*"] to allow_origins=origins
-    allow_origins=["*"], 
-    allow_credentials=True,
+    allow_origins=origins,       # ✅ FIX: Use specific list, NOT ["*"]
+    allow_credentials=True,      # This requires specific origins
     allow_methods=["*"],
     allow_headers=["*"],
 )
