@@ -2,17 +2,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { auth } from '../firebase'; 
-import config from '../config'; // ✅ IMPORT CONFIG
+import config from '../config'; 
 import LungAnimation from './LungAnimation';
 import AudioVisualizer from './AudioVisualizer'; 
-import { useTranslation } from '../hooks/useTranslation';
+// import { useTranslation } from '../hooks/useTranslation'; // Uncomment if using
 import { 
   FaMicrophone, FaStop, FaNotesMedical, FaCheckCircle, 
   FaStethoscope, FaPhoneAlt, FaCalendarAlt, FaSignOutAlt 
 } from 'react-icons/fa';
 
 const SmartRecorder = ({ onLogout }) => {
-  const { t } = useTranslation();
+  // const { t } = useTranslation();
   
   // Recorder State
   const [isRecording, setIsRecording] = useState(false);
@@ -39,31 +39,32 @@ const SmartRecorder = ({ onLogout }) => {
   const audioChunksRef = useRef([]);
   const animationRef = useRef(null);
 
-  // GLASS STYLE
+  // 🛑 FIX 1: REMOVED 'backdropFilter' (Causes Dropdown Glitches)
+  // We use simple transparency instead. It looks the same but is stable.
   const glassInputStyle = {
-      background: 'rgba(255,255,255,0.5)',
-      border: '1px solid rgba(255,255,255,0.3)',
-      backdropFilter: 'blur(5px)',
+      background: 'rgba(255, 255, 255, 0.7)', // Slightly more opaque for readability
+      border: '1px solid rgba(255, 255, 255, 0.5)',
       color: '#2d3436',
       borderRadius: '8px',
-      padding: '10px 12px'
+      padding: '10px 12px',
+      outline: 'none'
   };
 
   useEffect(() => {
     const initData = async () => {
         try {
-            const token = await auth.currentUser.getIdToken();
-            // ✅ USE CONFIG API
-            const configRes = await axios.get(`${config.API_BASE_URL}/system-config`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setSystemConfig(configRes.data);
+            if (auth.currentUser) {
+                const token = await auth.currentUser.getIdToken();
+                const configRes = await axios.get(`${config.API_BASE_URL}/system-config`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setSystemConfig(configRes.data);
 
-            // ✅ USE CONFIG API
-            const countiesRes = await axios.get(`${config.API_BASE_URL}/counties`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            setCounties(countiesRes.data);
+                const countiesRes = await axios.get(`${config.API_BASE_URL}/counties`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setCounties(countiesRes.data);
+            }
         } catch (err) {
             console.error("Failed to load init data", err);
         }
@@ -167,8 +168,6 @@ const SmartRecorder = ({ onLogout }) => {
     const calculatedAge = calculateAge(patientData.dob);
 
     try {
-      // 1. Send to Python (AI Engine) for Analysis
-      // ✅ USE CONFIG AI_URL
       const pythonFormData = new FormData();
       pythonFormData.append('file', audioBlob, 'recording.webm');
       pythonFormData.append('age', calculatedAge);
@@ -180,8 +179,6 @@ const SmartRecorder = ({ onLogout }) => {
       setAnalysis(aiResult);
       setSaveStatus('saving');
 
-      // 2. Send to Node.js Backend (To Save Record)
-      // ✅ USE CONFIG API_BASE_URL
       const token = await auth.currentUser.getIdToken();
       
       const nodeFormData = new FormData();
@@ -298,8 +295,14 @@ const SmartRecorder = ({ onLogout }) => {
                       onChange={handleInputChange} 
                       value={patientData.location}
                   >
-                      <option value="">-- Select County --</option>
-                      {counties.map((c) => <option key={c.id} value={c.name}>{c.code.toString().padStart(3,'0')} - {c.name}</option>)}
+                      {/* 🛑 FIX 2: Force color on Options to prevent invisible text */}
+                      <option value="" style={{color: 'black'}}>-- Select County --</option>
+                      {counties.map((c) => (
+                        <option key={c.id} value={c.name} style={{color: 'black'}}>
+                            {/* 🛑 FIX 3: Safe Access to code */}
+                            {(c.code || '000').toString().padStart(3,'0')} - {c.name}
+                        </option>
+                      ))}
                   </select>
                   {errors.location && <div className="invalid-feedback">{errors.location}</div>}
               </div>
