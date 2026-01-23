@@ -71,24 +71,32 @@ const corsOptions = {
 // Apply CORS globally (Handles Preflight automatically)
 app.use(cors(corsOptions));
 
-// ❌ REMOVED: app.options('*', cors()) 
-// That specific line caused the "PathError" crash. 
-// app.use(cors()) above handles OPTIONS requests just fine on its own.
-
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ==========================================
-// 3. DATABASE CONNECTION (Neon + SSL)
+// 3. DATABASE CONNECTION (✅ FIXED FOR CLOUD)
 // ==========================================
-const db = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'sautiyaafya',
-  password: process.env.DB_PASSWORD || 'yourpassword',
-  port: process.env.DB_PORT || 5432,
-  ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : false
-});
+
+// We use a ternary operator to check if we are in the cloud (DATABASE_URL exists)
+// or local (use individual variables).
+const dbConfig = process.env.DATABASE_URL 
+  ? {
+      // ☁️ CLOUD CONFIG (Render/Neon)
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false } // Required for secure cloud connections
+    }
+  : {
+      // 💻 LOCAL FALLBACK
+      user: process.env.DB_USER || 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      database: process.env.DB_NAME || 'sautiyaafya',
+      password: process.env.DB_PASSWORD || 'yourpassword',
+      port: process.env.DB_PORT || 5432,
+      ssl: false
+    };
+
+const db = new Pool(dbConfig);
 
 // ==========================================
 // 4. MULTER (Memory Storage)
