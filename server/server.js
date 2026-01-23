@@ -85,52 +85,14 @@ const dbConfig = process.env.DATABASE_URL
 const db = new Pool(dbConfig);
 
 // ==========================================
-// 4. MULTER & CLOUDINARY
+// 4. AUTO-HEAL DATABASE FUNCTION
 // ==========================================
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
-
-const uploadToCloudinary = (buffer, folder = 'audio') => {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      { resource_type: "auto", folder: folder },
-      (error, result) => {
-        if (error) return reject(error);
-        resolve(result);
-      }
-    );
-    const bufferStream = new stream.PassThrough();
-    bufferStream.end(buffer);
-    bufferStream.pipe(uploadStream);
-  });
-};
-
-// ==========================================
-// 5. AUTH MIDDLEWARE
-// ==========================================
-const verifyToken = async (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).send('Unauthorized');
+// This function runs automatically when the server starts.
+const initDB = async () => {
   try {
-    const decodedValue = await admin.auth().verifyIdToken(token);
-    req.user = decodedValue;
-    next();
-  } catch (e) {
-    return res.status(403).send('Invalid Token');
-  }
-};
+    console.log("🔄 Checking Database Integrity...");
 
-// ==========================================
-// 6. ROUTES
-// ==========================================
-
-app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Backend Online"));
-app.get('/health', (req, res) => res.status(200).send('OK'));
-
-// 🛠️ DATABASE SETUP ROUTE (UPDATED TO FIX MISSING COLUMN)
-app.get('/api/init-db', async (req, res) => {
-  try {
-    // 1. Create Users Table (If missing)
+    // 1. Create Users Table
     await db.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -142,7 +104,7 @@ app.get('/api/init-db', async (req, res) => {
       );
     `);
 
-    // 🚨 2. FIX: Add firebase_uid if it's missing (The Fix for your Error)
+    // 2. SELF-HEALING: Add missing column 'firebase_uid' if table existed but column didn't
     await db.query(`
         ALTER TABLE users 
         ADD COLUMN IF NOT EXISTS firebase_uid VARCHAR(255) UNIQUE;
@@ -183,8 +145,8 @@ app.get('/api/init-db', async (req, res) => {
       );
     `);
 
-     // 5. Create Counties Table
-     await db.query(`
+    // 5. Create Counties Table
+    await db.query(`
         CREATE TABLE IF NOT EXISTS counties (
             id SERIAL PRIMARY KEY,
             code INTEGER,
@@ -192,12 +154,54 @@ app.get('/api/init-db', async (req, res) => {
         );
      `);
 
-    res.send("✅ Database updated! 'firebase_uid' column added successfully.");
+    console.log("✅ Database Integrity Verified. All tables and columns ready.");
   } catch (err) {
-    console.error(err);
-    res.status(500).send("❌ Database update failed: " + err.message);
+    console.error("❌ Database Init Failed:", err.message);
   }
-});
+};
+
+// ==========================================
+// 5. MULTER & CLOUDINARY
+// ==========================================
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+const uploadToCloudinary = (buffer, folder = 'audio') => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { resource_type: "auto", folder: folder },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(buffer);
+    bufferStream.pipe(uploadStream);
+  });
+};
+
+// ==========================================
+// 6. AUTH MIDDLEWARE
+// ==========================================
+const verifyToken = async (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).send('Unauthorized');
+  try {
+    const decodedValue = await admin.auth().verifyIdToken(token);
+    req.user = decodedValue;
+    next();
+  } catch (e) {
+    return res.status(403).send('Invalid Token');
+  }
+};
+
+// ==========================================
+// 7. ROUTES
+// ==========================================
+
+app.get('/', (req, res) => res.send("🛡️ SautiYaAfya Backend Online"));
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
 app.post('/api/login', verifyToken, async (req, res) => {
   const { email, uid } = req.user;
@@ -215,11 +219,6 @@ app.post('/api/login', verifyToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-// ... (KEEP ALL YOUR OTHER ROUTES HERE: register, patients, settings, analytics) ...
-// DO NOT DELETE THE OTHER ROUTES!
-// For brevity, I assume you are pasting this OVER your existing file but
-// keeping the routes you had before.
 
 app.post('/api/register', verifyToken, async (req, res) => {
     const { role, county_id } = req.body;
@@ -387,6 +386,7 @@ app.put('/api/settings', verifyToken, async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Orchestrator secured and running on port ${PORT}`);
+  await initDB(); // ✅ AUTOMATIC DATABASE FIX ON STARTUP
 });
