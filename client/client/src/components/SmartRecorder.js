@@ -49,6 +49,19 @@ const SmartRecorder = ({ onLogout }) => {
   };
 
   useEffect(() => {
+    // 🚀 NEW: WAKE UP SERVER IMMEDIATELY
+    // This reduces "perceived latency" by starting the cold start early
+    const wakeUpServer = async () => {
+        try {
+            console.log("🔥 Warming up AI Engine...");
+            await axios.get('https://sauti-ya-afya-1.onrender.com/');
+            console.log("✅ AI Engine is Awake & Ready!");
+        } catch (e) {
+            console.log("⚠️ Server waking up...");
+        }
+    };
+    wakeUpServer(); 
+
     const initData = async () => {
         try {
             if (auth.currentUser) {
@@ -196,6 +209,9 @@ const SmartRecorder = ({ onLogout }) => {
       nodeFormData.append('diagnosis', aiResult.preliminary_assessment);
       nodeFormData.append('risk_level', aiResult.risk_level_output);
       nodeFormData.append('biomarkers', JSON.stringify(aiResult.biomarkers));
+      
+      // ✅ USE THE REAL IMAGE FROM SERVER
+      // If server sends nothing (rare), fallback to empty string (Node backend handles empty strings fine, just not corrupted data)
       nodeFormData.append('spectrogram', aiResult.visualizer?.spectrogram_image || "");
 
       await axios.post(`${config.API_BASE_URL}/patients`, nodeFormData, {
