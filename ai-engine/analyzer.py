@@ -1,5 +1,3 @@
-import matplotlib
-matplotlib.use('Agg') # Force Headless Mode
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="librosa")
 
@@ -13,7 +11,9 @@ from torchvision import transforms, models
 from PIL import Image
 import torch.nn.functional as F
 import gc 
-import subprocess # 👈 CRITICAL IMPORT FOR DEADLOCK FIX
+import subprocess 
+
+# ⚠️ REMOVED ALL MATPLOTLIB IMPORTS TO PREVENT SERVER CRASHES
 
 # ==========================================
 # 🧠 AI MODEL LOADER
@@ -48,29 +48,26 @@ preprocess_ai = transforms.Compose([
 ])
 
 # ==========================================
-# 🔬 ANALYZER FUNCTION (MANUAL FFMPEG PIPE)
+# 🔬 ANALYZER FUNCTION (NO PLOTTING = NO CRASHES)
 # ==========================================
 def analyze_audio(file_path, sensitivity_threshold=0.75):
     try:
-        print("--- [STEP 1] Starting Analysis (Manual Pipe) ---")
+        print("--- [STEP 1] Starting Analysis (Crash-Proof) ---")
         
-        # 🛑 REPLACED LIBROSA.LOAD WITH MANUAL FFMPEG
-        # This prevents the "audioread" deadlock on Render Free Tier
+        # 1. MANUAL FFMPEG PIPE (Fixes Deadlock)
         command = [
             'ffmpeg',
             '-i', file_path,
-            '-f', 's16le',      # Raw PCM audio
+            '-f', 's16le',
             '-acodec', 'pcm_s16le',
-            '-ar', '16000',     # Force 16k Hz
-            '-ac', '1',         # Mono
-            '-t', '5',          # Limit to 5 seconds
-            '-loglevel', 'error', # Silence logs
-            '-'                 # Output to Pipe
+            '-ar', '16000',
+            '-ac', '1',
+            '-t', '5', 
+            '-loglevel', 'error',
+            '-'
         ]
 
         print(f"🔍 DIAGNOSTIC: Running FFmpeg manual pipe...")
-        
-        # Run FFmpeg directly
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = process.communicate()
         
@@ -78,12 +75,10 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
             print(f"❌ FFmpeg Failed: {err.decode()}")
             raise Exception("FFmpeg could not decode audio file")
 
-        # Convert raw bytes to Numpy Array
         y = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
         sr = 16000
         duration = float(len(y) / sr)
-        
-        print(f"--- [STEP 2] Audio Decoded Successfully via Pipe ({duration}s) ---")
+        print(f"--- [STEP 2] Audio Decoded ({duration}s) ---")
 
         # 2. DSP CALCULATIONS
         y_harmonic, y_percussive = librosa.effects.hpss(y)
@@ -98,40 +93,35 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         
         print("--- [STEP 3] DSP Complete ---")
 
-        # 3. GENERATE SPECTROGRAM (Data Only)
+        # 3. GENERATE SPECTROGRAM DATA
         S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
         S_dB = librosa.power_to_db(S, ref=np.max)
         
-        # 🧹 CLEANUP
+        # Cleanup
         del y, y_harmonic, y_percussive
         gc.collect()
 
-        # ⚠️ NO VISUALIZER (Save RAM)
-        spectrogram_b64 = "" 
         print("--- [STEP 4] Spectrogram Data Ready ---")
 
-        # 4. AI INFERENCE (Optimized)
+        # 4. AI INFERENCE (DIRECT NUMPY -> PIL -> TENSOR)
+        # 🛑 REPLACED MATPLOTLIB WITH SAFE PIL CONVERSION
         ai_diagnosis = "Unknown"
         ai_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
         
         if ai_available:
-            # Generate tiny temp image just for AI logic
-            import matplotlib.pyplot as plt
-            plt.figure(figsize=(2.24, 2.24), dpi=100) 
-            plt.gca().set_axis_off()
-            plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
-            plt.margins(0,0)
-            librosa.display.specshow(S_dB, sr=sr, fmax=4000)
+            # Normalize S_dB to 0-255 for Image
+            s_min, s_max = S_dB.min(), S_dB.max()
+            s_norm = 255 * (S_dB - s_min) / (s_max - s_min)
+            s_norm = s_norm.astype(np.uint8)
             
-            buf_ai = io.BytesIO()
-            plt.savefig(buf_ai, format='png', bbox_inches='tight', pad_inches=0)
-            buf_ai.seek(0)
-            plt.close('all') 
+            # Flip Y-axis to match standard spectrogram view
+            s_norm = np.flipud(s_norm)
+            
+            # Create Image directly in memory (Thread-Safe)
+            img = Image.fromarray(s_norm).convert('RGB')
             
             # Predict
-            img = Image.open(buf_ai).convert('RGB')
             input_tensor = preprocess_ai(img).unsqueeze(0)
-            buf_ai.close()
             
             with torch.no_grad():
                 outputs = model(input_tensor)
@@ -182,7 +172,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                 "prob_normal": round(ai_probs["Normal"], 3)
             },
             "visualizer": {
-                "spectrogram_image": "" 
+                "spectrogram_image": "" # Kept empty for performance
             },
             "preliminary_assessment": result_tag,
             "risk_level_output": final_risk,
