@@ -13,7 +13,7 @@ import gc
 import subprocess 
 import os
 
-# 🛑 LIMIT THREADS (Prevents CPU/RAM spikes on Render Free Tier)
+# 🛑 LIMIT THREADS (Crucial for Render Free Tier)
 torch.set_num_threads(1) 
 
 print("🔄 Loading Lite Brain...")
@@ -49,10 +49,9 @@ preprocess_ai = transforms.Compose([
 
 def analyze_audio(file_path, sensitivity_threshold=0.75):
     try:
-        print("--- [STEP 1] Starting Analysis (5s Lite Mode + JPEG) ---")
+        print("--- [STEP 1] Starting Analysis (Aggressive Memory Saving) ---")
         
-        # 1. MANUAL FFMPEG (5 SECONDS LIMIT)
-        # 5s is the "Sweet Spot": Full breath cycle, safe RAM usage.
+        # 1. MANUAL FFMPEG (5 SECONDS)
         command = [
             'ffmpeg', '-y', '-i', file_path,
             '-f', 's16le', '-acodec', 'pcm_s16le',
@@ -67,48 +66,62 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         if process.returncode != 0:
             raise Exception(f"FFmpeg Error: {err.decode()}")
 
+        # Load Audio
         y = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
         sr = 16000
         print(f"--- [STEP 2] Decoded {len(y)} samples ---")
 
-        # 2. LIGHTWEIGHT DSP (No HPSS)
-        # Calculates stats on the whole file to save RAM vs splitting it
+        # 2. LIGHTWEIGHT DSP
+        # Calculate stats immediately
         rms_energy = float(np.mean(librosa.feature.rms(y=y)))
         spectral_flatness = librosa.feature.spectral_flatness(y=y)[0]
         tonality_score = float(1.0 - np.mean(spectral_flatness)) 
         
         print("--- [STEP 3] DSP Complete ---")
 
-        # 3. SPECTROGRAM (Data Calculation)
+        # 3. SPECTROGRAM (Step-by-Step Memory Clearing)
+        
+        # A. Create Raw Spectrogram
         S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
+        
+        # 🗑️ DELETE AUDIO IMMEDIATELY (Drop the first ball)
+        del y 
+        gc.collect() 
+
+        # B. Convert to DB
         S_dB = librosa.power_to_db(S, ref=np.max)
         
-        # Free audio memory immediately
-        del y 
+        # 🗑️ DELETE RAW SPECTROGRAM IMMEDIATELY
+        del S
         gc.collect()
 
-        # 4. GENERATE "DIET" SPECTROGRAM (JPEG Compression)
-        # We use PIL instead of Matplotlib to avoid server crashes.
-        
-        # Normalize S_dB to 0-255 range for image conversion
+        # C. Normalize for Image
         s_min, s_max = S_dB.min(), S_dB.max()
         s_norm = 255 * (S_dB - s_min) / (s_max - s_min)
         s_norm = s_norm.astype(np.uint8)
-        
-        # Flip Y-axis so low freq is at the bottom (standard view)
+
+        # 🗑️ DELETE DB SPECTROGRAM IMMEDIATELY
+        del S_dB
+        gc.collect()
+
+        # D. Create Image
         img_data = np.flipud(s_norm)
         img = Image.fromarray(img_data).convert('RGB')
         
-        # 📉 COMPRESS: Use JPEG with 50% quality
-        # This reduces file size from ~150KB to ~4KB to prevent Node backend crash
+        # 🗑️ DELETE NORM ARRAY IMMEDIATELY
+        del s_norm
+        del img_data
+        gc.collect()
+
+        # E. Save to JPEG Buffer (Tiny 4KB)
         buf = io.BytesIO()
         img.save(buf, format='JPEG', quality=50) 
         spectrogram_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
         buf.close()
+        
+        print("--- [STEP 4] Diet Spectrogram Generated ---")
 
-        print("--- [STEP 4] Compressed Spectrogram Generated ---")
-
-        # 5. AI INFERENCE
+        # 4. AI INFERENCE
         ai_diagnosis = "Unknown"
         ai_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
         
@@ -122,7 +135,11 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                 ai_probs["Pneumonia"] = float(probs[2])
                 winner_idx = torch.argmax(probs).item()
                 ai_diagnosis = CLASSES[winner_idx]
-                
+        
+        # 🗑️ FINAL CLEANUP
+        del img
+        gc.collect()
+        
         print(f"--- [STEP 5] AI Result: {ai_diagnosis} ---")
 
         return {
@@ -135,7 +152,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                 "prob_normal": round(ai_probs["Normal"], 3)
             },
             "visualizer": { 
-                # ✅ SENDING JPEG DATA URI (Tiny Payload)
+                # ✅ SENDING TINY JPEG
                 "spectrogram_image": f"data:image/jpeg;base64,{spectrogram_b64}" 
             },
             "preliminary_assessment": f"{ai_diagnosis} Pattern",
