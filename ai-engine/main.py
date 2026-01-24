@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 import os
 import uvicorn
+import shutil # 👈 ADDED for diagnostics
 from analyzer import analyze_audio
 
 # --- OPTIONAL: LLM BRIDGE ---
@@ -16,7 +17,6 @@ except ImportError:
 app = FastAPI(title="SautiYaAfya AI Bridge [SECURE]")
 
 # --- 🛡️ SECURITY LAYER 1: PRODUCTION CORS ---
-# 🛑 FIX APPLIED: Exact URLs from your error logs
 origins = [
     "http://localhost:3000",                  # Local React
     "http://localhost:5000",                  # Local Node
@@ -73,6 +73,7 @@ async def analyze_endpoint(
         
         await file.seek(0)
         
+        # 📂 WRITE FILE & DIAGNOSTIC CHECK
         with open(temp_path, "wb") as buffer:
             size = 0
             while True:
@@ -82,8 +83,22 @@ async def analyze_endpoint(
                 if size > MAX_FILE_SIZE:
                     raise HTTPException(status_code=413, detail="File too large (Max 10MB).")
                 buffer.write(chunk)
+        
+        # 🔍 ROOT CAUSE DIAGNOSTIC 1: FILE SIZE
+        print(f"🔍 DIAGNOSTIC: Saved {file.filename} - Size: {size} bytes")
+        if size < 100:
+             print("❌ CRITICAL: File is too small (<100 bytes). Likely empty.")
+             raise HTTPException(status_code=400, detail="Uploaded file is empty or corrupted.")
+
+        # 🔍 ROOT CAUSE DIAGNOSTIC 2: FFmpeg CHECK
+        ffmpeg_path = shutil.which("ffmpeg")
+        print(f"🔍 DIAGNOSTIC: FFmpeg found at: {ffmpeg_path}")
+        if not ffmpeg_path:
+             print("❌ CRITICAL: FFmpeg NOT FOUND. Audio load will hang.")
             
         # 3. Audio Analysis (Threaded)
+        print("🔍 DIAGNOSTIC: Handing off to Analyzer...")
+        
         signal_result = await run_in_threadpool(
             analyze_audio, 
             temp_path, 

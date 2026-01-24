@@ -16,7 +16,7 @@ import torch.nn.functional as F
 import gc # Garbage Collection
 
 # ==========================================
-# 🧠 AI MODEL LOADER
+# 🧠 AI MODEL LOADER (OPTIMIZED)
 # ==========================================
 print("🔄 Loading Phase 5 Native Brain...")
 device = torch.device("cpu")
@@ -55,7 +55,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         print("--- [STEP 1] Starting Analysis ---")
         
         # 1. LOAD AUDIO (Strict 5 Seconds Limit)
-        # ⚠️ OPTIMIZATION: Reducing to 5s drastically lowers RAM usage
+        # Reducing to 5s drastically lowers RAM usage during FFmpeg decoding
         y, sr = librosa.load(file_path, sr=16000, duration=5.0) 
         duration = float(librosa.get_duration(y=y, sr=sr))
         print(f"--- [STEP 2] Audio Loaded ({duration}s) ---")
@@ -73,7 +73,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         
         print("--- [STEP 3] DSP Complete ---")
 
-        # 3. GENERATE SPECTROGRAM DATA (No Image)
+        # 3. GENERATE SPECTROGRAM (Data Only, No Image for now)
         S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
         S_dB = librosa.power_to_db(S, ref=np.max)
         
@@ -81,18 +81,18 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         del y, y_harmonic, y_percussive
         gc.collect()
 
-        # ⚠️ DISABLED VISUALIZER TO PREVENT CRASH ⚠️
-        # We send an empty string instead of the image.
+        # ⚠️ DISABLED VISUALIZER TO SAVE RAM ⚠️
+        # (We send a placeholder instead of crashing the server)
         spectrogram_b64 = "" 
         
-        print("--- [STEP 4] Spectrogram Data Ready (Image Skipped) ---")
+        print("--- [STEP 4] Spectrogram Data Ready ---")
 
-        # 4. AI INFERENCE (Optimized)
+        # 4. AI INFERENCE (Using Data, not Image File)
         ai_diagnosis = "Unknown"
         ai_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
         
         if ai_available:
-            # Generate tiny temp image just for AI logic
+            # Generate tiny temp image just for AI
             import matplotlib.pyplot as plt
             plt.figure(figsize=(2.24, 2.24), dpi=100) 
             plt.gca().set_axis_off()
@@ -159,7 +159,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                 "prob_normal": round(ai_probs["Normal"], 3)
             },
             "visualizer": {
-                "spectrogram_image": "" # Empty for now
+                "spectrogram_image": "" # Empty for now to save RAM
             },
             "preliminary_assessment": result_tag,
             "risk_level_output": final_risk,
