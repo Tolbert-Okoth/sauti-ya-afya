@@ -172,11 +172,11 @@ const SmartRecorder = ({ onLogout }) => {
       pythonFormData.append('symptoms', patientData.symptoms || "None reported");
       pythonFormData.append('threshold', systemConfig.confidence_threshold);
 
-      // 🛑 DEBUG: USING VERCEL PROXY TO BYPASS CORS
-      console.log("🚀 SENDING REQUEST VIA VERCEL PROXY TO: /api/proxy/analyze");
+      // 🛑 DEBUG: FORCE DIRECT CONNECTION (Bypass Vercel 10s Timeout)
+      console.log("🚀 SENDING DIRECTLY TO RENDER: https://sauti-ya-afya-1.onrender.com/analyze");
       
-      // ✅ USE RELATIVE URL - VERCEL HANDLES THE REST
-      const aiRes = await axios.post('/api/proxy/analyze', pythonFormData);
+      // ✅ DIRECT URL - Allows long timeouts for Cold Starts
+      const aiRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
       
       console.log("✅ RESPONSE RECEIVED:", aiRes.data);
       const aiResult = aiRes.data;
