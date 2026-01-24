@@ -49,7 +49,7 @@ preprocess_ai = transforms.Compose([
 
 def analyze_audio(file_path, sensitivity_threshold=0.75):
     try:
-        print("--- [STEP 1] Starting Analysis (5s Lite Mode + Real Image) ---")
+        print("--- [STEP 1] Starting Analysis (5s Lite Mode + JPEG) ---")
         
         # 1. MANUAL FFMPEG (5 SECONDS LIMIT)
         # 5s is the "Sweet Spot": Full breath cycle, safe RAM usage.
@@ -87,7 +87,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         del y 
         gc.collect()
 
-        # 4. GENERATE REAL SPECTROGRAM IMAGE (Memory Safe Way)
+        # 4. GENERATE "DIET" SPECTROGRAM (JPEG Compression)
         # We use PIL instead of Matplotlib to avoid server crashes.
         
         # Normalize S_dB to 0-255 range for image conversion
@@ -99,13 +99,14 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         img_data = np.flipud(s_norm)
         img = Image.fromarray(img_data).convert('RGB')
         
-        # Save image to Base64 String in memory
+        # 📉 COMPRESS: Use JPEG with 50% quality
+        # This reduces file size from ~150KB to ~4KB to prevent Node backend crash
         buf = io.BytesIO()
-        img.save(buf, format='PNG')
+        img.save(buf, format='JPEG', quality=50) 
         spectrogram_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
         buf.close()
 
-        print("--- [STEP 4] Real Spectrogram Generated ---")
+        print("--- [STEP 4] Compressed Spectrogram Generated ---")
 
         # 5. AI INFERENCE
         ai_diagnosis = "Unknown"
@@ -134,8 +135,8 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                 "prob_normal": round(ai_probs["Normal"], 3)
             },
             "visualizer": { 
-                # ✅ REAL IMAGE: Sending the actual generated spectrogram
-                "spectrogram_image": f"data:image/png;base64,{spectrogram_b64}" 
+                # ✅ SENDING JPEG DATA URI (Tiny Payload)
+                "spectrogram_image": f"data:image/jpeg;base64,{spectrogram_b64}" 
             },
             "preliminary_assessment": f"{ai_diagnosis} Pattern",
             "risk_level_output": "High" if ai_diagnosis != "Normal" else "Low"
