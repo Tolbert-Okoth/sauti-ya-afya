@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/proxy/:match*",
+      "destination": "https://sauti-ya-afya-1.onrender.com/:match*"
+    }
+  ]
+}
