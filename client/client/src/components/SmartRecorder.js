@@ -7,7 +7,8 @@ import LungAnimation from './LungAnimation';
 import AudioVisualizer from './AudioVisualizer'; 
 import { 
   FaMicrophone, FaStop, FaNotesMedical, FaCheckCircle, 
-  FaStethoscope, FaPhoneAlt, FaCalendarAlt, FaSignOutAlt 
+  FaStethoscope, FaPhoneAlt, FaCalendarAlt, FaSignOutAlt,
+  FaServer, FaCircle 
 } from 'react-icons/fa';
 
 const SmartRecorder = ({ onLogout }) => {
@@ -19,6 +20,9 @@ const SmartRecorder = ({ onLogout }) => {
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); 
   
+  // 🟢 NEW: Server Status State ('sleeping' | 'waking' | 'ready')
+  const [serverStatus, setServerStatus] = useState('sleeping');
+
   // Admin Config & Counties
   const [systemConfig, setSystemConfig] = useState({ confidence_threshold: 0.75 });
   const [counties, setCounties] = useState([]); 
@@ -47,14 +51,23 @@ const SmartRecorder = ({ onLogout }) => {
   };
 
   useEffect(() => {
-    // 🚀 SERVER WARM-UP (Reduces Cold Start Latency)
+    // 🚀 VISUAL SERVER WARM-UP
     const wakeUpServer = async () => {
         try {
+            setServerStatus('waking');
             console.log("🔥 Warming up AI Engine...");
-            await axios.get('https://sauti-ya-afya-1.onrender.com/');
+            // Use a timeout to force 'waking' state to show for at least 1.5s (better UX)
+            const minWait = new Promise(resolve => setTimeout(resolve, 1500));
+            const ping = axios.get('https://sauti-ya-afya-1.onrender.com/');
+            
+            await Promise.all([ping, minWait]);
+            
+            setServerStatus('ready');
             console.log("✅ AI Engine is Awake & Ready!");
         } catch (e) {
-            console.log("⚠️ Server waking up...");
+            console.log("⚠️ Server waking up...", e);
+            // Even if ping fails (CORS etc), we assume it's trying to wake up
+            setServerStatus('ready'); 
         }
     };
     wakeUpServer(); 
@@ -182,7 +195,6 @@ const SmartRecorder = ({ onLogout }) => {
       pythonFormData.append('symptoms', patientData.symptoms || "None reported");
       pythonFormData.append('threshold', systemConfig.confidence_threshold);
 
-      // 🚀 SEND TO AI ENGINE
       console.log("🚀 SENDING TO AI: https://sauti-ya-afya-1.onrender.com/analyze");
       const aiRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
       
@@ -204,8 +216,6 @@ const SmartRecorder = ({ onLogout }) => {
       nodeFormData.append('diagnosis', aiResult.preliminary_assessment);
       nodeFormData.append('risk_level', aiResult.risk_level_output);
       nodeFormData.append('biomarkers', JSON.stringify(aiResult.biomarkers));
-      
-      // ✅ HANDLE VERDICT-ONLY MODE (Empty String fallback)
       nodeFormData.append('spectrogram', aiResult.visualizer?.spectrogram_image || "");
 
       await axios.post(`${config.API_BASE_URL}/patients`, nodeFormData, {
@@ -236,7 +246,7 @@ const SmartRecorder = ({ onLogout }) => {
       <div className="glass-card w-100" style={{ maxWidth: '1100px', minHeight: '85vh' }}>
         <div className="p-3 p-md-5">
           
-          {/* Header */}
+          {/* Header with Server Status Badge */}
           <div className="d-flex align-items-center justify-content-between mb-5">
               <div className="d-flex align-items-center">
                   <div className="bg-white rounded-circle p-3 text-accent me-3 shadow-sm">
@@ -244,7 +254,26 @@ const SmartRecorder = ({ onLogout }) => {
                   </div>
                   <div>
                       <h4 className="fw-bold text-dark-brown mb-0">New Screening</h4>
-                      <small className="text-muted d-block">Phase 6: Cloud Deployment</small>
+                      
+                      {/* 🟢 SERVER STATUS BADGE */}
+                      <div className="d-flex align-items-center mt-1">
+                        <small className="text-muted me-2">AI Engine Status:</small>
+                        {serverStatus === 'waking' && (
+                            <span className="badge bg-warning text-dark animate-pulse d-flex align-items-center">
+                                <FaCircle size={8} className="me-1"/> Waking Up...
+                            </span>
+                        )}
+                        {serverStatus === 'ready' && (
+                            <span className="badge bg-success d-flex align-items-center">
+                                <FaCheckCircle size={8} className="me-1"/> Ready
+                            </span>
+                        )}
+                        {serverStatus === 'sleeping' && (
+                            <span className="badge bg-secondary d-flex align-items-center">
+                                <FaServer size={8} className="me-1"/> Connecting...
+                            </span>
+                        )}
+                      </div>
                   </div>
               </div>
               {onLogout && (
@@ -342,8 +371,13 @@ const SmartRecorder = ({ onLogout }) => {
               </div>
               <div className="d-grid gap-2 col-12 col-md-6 mx-auto">
               {!isRecording ? (
-                  <button className="btn btn-outline-danger btn-lg rounded-pill shadow-sm py-3" style={{borderWidth: '2px'}} onClick={startRecording}>
-                  <FaMicrophone className="me-2"/> Start Recording
+                  <button 
+                    className="btn btn-outline-danger btn-lg rounded-pill shadow-sm py-3" 
+                    style={{borderWidth: '2px'}} 
+                    onClick={startRecording}
+                    disabled={serverStatus !== 'ready'} // 🛑 PREVENT RECORDING UNTIL WARM
+                  >
+                    {serverStatus !== 'ready' ? '⏳ Waiting for AI...' : <><FaMicrophone className="me-2"/> Start Recording</>}
                   </button>
               ) : (
                   <button className="btn btn-danger btn-lg rounded-pill shadow-sm animate-pulse py-3" onClick={stopRecording}>
@@ -354,7 +388,7 @@ const SmartRecorder = ({ onLogout }) => {
           </div>
 
           {/* RESULTS AREA */}
-          {loading && <div className="mt-5 text-center text-dark-brown animate-pulse">🧠 Running Quantized Neural Network...</div>}
+          {loading && <div className="mt-5 text-center text-dark-brown animate-pulse">🧠 Running AI Verdict Analysis (Verdict Only Mode)...</div>}
           
           {analysis && (
             <div className={`glass-card mt-5 text-start border-start border-5 animate-slide-in shadow-lg ${analysis.risk_level_output === 'High' ? 'border-danger' : analysis.risk_level_output === 'Medium' ? 'border-warning' : 'border-success'}`}>
@@ -397,7 +431,7 @@ const SmartRecorder = ({ onLogout }) => {
                       </div>
                   </div>
 
-                  {/* Visualizer - NOW HANDLES EMPTY IMAGES GRACEFULLY */}
+                  {/* Visualizer - VERDICT ONLY PLACEHOLDER */}
                   <div className="col-12 col-lg-6">
                       <div className="h-100 d-flex flex-column">
                           <label className="small fw-bold text-muted text-uppercase mb-3">Audio Spectrogram Analysis</label>
@@ -411,8 +445,8 @@ const SmartRecorder = ({ onLogout }) => {
                                 <div className="d-flex align-items-center justify-content-center h-100 bg-light text-muted p-5">
                                     <div className="text-center">
                                         <FaStethoscope size={40} className="mb-3 opacity-25"/>
-                                        <p className="mb-0 small fw-bold">Visual Analysis Skipped</p>
-                                        <small>Optimized for Speed</small>
+                                        <p className="mb-0 small fw-bold">Verdict-Only Mode</p>
+                                        <small className="d-block text-muted">Image generation skipped for speed</small>
                                     </div>
                                 </div>
                             )}
