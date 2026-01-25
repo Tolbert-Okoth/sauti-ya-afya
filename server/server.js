@@ -321,7 +321,7 @@ app.get('/api/system-config', verifyToken, async (req, res) => {
     res.json({ confidence_threshold: 0.75 });
 });
 
-// ✅ SAVE PATIENT (Updated to handle DOB and Age)
+// ✅ SAVE PATIENT (Fixed: Handles Empty Spectrograms Safely)
 app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) => {
   try {
     const { 
@@ -329,13 +329,44 @@ app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) =
         diagnosis, risk_level, biomarkers, spectrogram 
     } = req.body;
     
+    // 1. Handle Audio Upload (Standard)
     let recordingUrl = null;
-
     if (req.file) {
-        console.log("Uploading to Cloudinary...");
+        console.log("Uploading Audio to Cloudinary...");
         const result = await uploadToCloudinary(req.file.buffer, 'sautiyaafya-audio');
         recordingUrl = result.secure_url; 
-        console.log(`[Cloud] Uploaded: ${recordingUrl}`);
+        console.log(`[Cloud] Audio Uploaded: ${recordingUrl}`);
+    }
+
+    // 2. Handle Spectrogram (The Fix for 500 Error)
+    // - If it's empty (Verdict Only), we skip upload.
+    // - If it's a real Base64 image, we upload it.
+    let finalSpectrogram = "";
+    
+    if (spectrogram && spectrogram.startsWith('data:image')) {
+        try {
+             console.log("Uploading Spectrogram to Cloudinary...");
+             const specResult = await cloudinary.uploader.upload(spectrogram, {
+                 folder: 'sauti_spectrograms'
+             });
+             finalSpectrogram = specResult.secure_url;
+        } catch (e) {
+            console.log("⚠️ Spectrogram upload skipped:", e.message);
+            // We don't crash, we just leave it empty
+        }
+    } else {
+        // It's just text or empty string, save as is
+        finalSpectrogram = spectrogram || "";
+    }
+
+    // 3. Handle Biomarkers JSON Parsing (Prevents DB Type Errors)
+    let safeBiomarkers = biomarkers;
+    if (typeof biomarkers === 'string') {
+        try {
+            safeBiomarkers = JSON.parse(biomarkers);
+        } catch (e) {
+            console.log("⚠️ Invalid biomarkers JSON, saving raw.");
+        }
     }
 
     const email = req.user.email;
@@ -351,7 +382,7 @@ app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) =
     
     const newPatient = await db.query(query, [
         name, age, dob, location, phone, symptoms, diagnosis, 
-        risk_level, biomarkers, county_id, spectrogram, recordingUrl
+        risk_level, safeBiomarkers, county_id, finalSpectrogram, recordingUrl
     ]);
     res.json(newPatient.rows[0]);
 
