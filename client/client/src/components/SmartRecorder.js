@@ -20,7 +20,7 @@ const SmartRecorder = ({ onLogout }) => {
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState(''); 
   
-  // 🟢 NEW: Server Status State ('sleeping' | 'waking' | 'ready')
+  // Server Status State ('sleeping' | 'waking' | 'ready')
   const [serverStatus, setServerStatus] = useState('sleeping');
 
   // Admin Config & Counties
@@ -56,7 +56,6 @@ const SmartRecorder = ({ onLogout }) => {
         try {
             setServerStatus('waking');
             console.log("🔥 Warming up AI Engine...");
-            // Use a timeout to force 'waking' state to show for at least 1.5s (better UX)
             const minWait = new Promise(resolve => setTimeout(resolve, 1500));
             const ping = axios.get('https://sauti-ya-afya-1.onrender.com/');
             
@@ -66,7 +65,6 @@ const SmartRecorder = ({ onLogout }) => {
             console.log("✅ AI Engine is Awake & Ready!");
         } catch (e) {
             console.log("⚠️ Server waking up...", e);
-            // Even if ping fails (CORS etc), we assume it's trying to wake up
             setServerStatus('ready'); 
         }
     };
@@ -183,28 +181,55 @@ const SmartRecorder = ({ onLogout }) => {
     cancelAnimationFrame(animationRef.current);
   };
 
+  // 🔄 THE NEW ASYNC STOP HANDLER (Ticket System)
   const handleStop = async () => {
     setLoading(true);
     const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
     const calculatedAge = calculateAge(patientData.dob);
 
     try {
+      // 1. Prepare Upload
       const pythonFormData = new FormData();
       pythonFormData.append('file', audioBlob, 'recording.webm');
-      pythonFormData.append('age', calculatedAge);
-      pythonFormData.append('symptoms', patientData.symptoms || "None reported");
       pythonFormData.append('threshold', systemConfig.confidence_threshold);
 
-      console.log("🚀 SENDING TO AI: https://sauti-ya-afya-1.onrender.com/analyze");
-      const aiRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
+      console.log("🎫 SUBMITTING JOB TICKET...");
       
-      console.log("✅ RESPONSE RECEIVED:", aiRes.data);
-      const aiResult = aiRes.data;
+      // 2. Submit & Get Ticket
+      const submitRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
+      const jobId = submitRes.data.job_id;
+      console.log(`✅ JOB STARTED. TICKET: ${jobId}`);
+
+      // 3. Polling Loop
+      let aiResult = null;
+      let attempts = 0;
+      const maxAttempts = 60; // 2 mins max timeout
+
+      while (attempts < maxAttempts) {
+          attempts++;
+          // Wait 2 seconds
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Check Status
+          const statusRes = await axios.get(`https://sauti-ya-afya-1.onrender.com/status/${jobId}`);
+          console.log(`⏳ Poll #${attempts}: ${statusRes.data.status}`);
+
+          if (statusRes.data.status === 'completed') {
+              aiResult = statusRes.data.result;
+              break; 
+          } else if (statusRes.data.status === 'failed') {
+              throw new Error(statusRes.data.error || "AI Analysis Failed");
+          }
+      }
+
+      if (!aiResult) throw new Error("Server timed out processing the request.");
+
+      console.log("🎯 RESULT RETRIEVED:", aiResult);
       setAnalysis(aiResult);
       setSaveStatus('saving');
 
+      // 4. Save to Node Database
       const token = await auth.currentUser.getIdToken();
-      
       const nodeFormData = new FormData();
       nodeFormData.append('file', audioBlob, 'recording.webm');
       nodeFormData.append('name', patientData.name);
@@ -216,7 +241,7 @@ const SmartRecorder = ({ onLogout }) => {
       nodeFormData.append('diagnosis', aiResult.preliminary_assessment);
       nodeFormData.append('risk_level', aiResult.risk_level_output);
       nodeFormData.append('biomarkers', JSON.stringify(aiResult.biomarkers));
-      nodeFormData.append('spectrogram', aiResult.visualizer?.spectrogram_image || "");
+      nodeFormData.append('spectrogram', ""); // Verdict Only Mode
 
       await axios.post(`${config.API_BASE_URL}/patients`, nodeFormData, {
         headers: { 
@@ -227,8 +252,8 @@ const SmartRecorder = ({ onLogout }) => {
       setSaveStatus('saved');
 
     } catch (err) {
-      console.error("❌ UPLOAD ERROR:", err);
-      alert(`Analysis Failed: ${err.message}`);
+      console.error("❌ ERROR:", err);
+      alert(`Error: ${err.message}`);
       setSaveStatus('error');
     } finally {
       setLoading(false);
@@ -287,77 +312,36 @@ const SmartRecorder = ({ onLogout }) => {
           <div className="row g-4 text-start">
               <div className="col-12 col-md-6">
                   <label className="form-label small fw-bold text-muted text-uppercase">Patient Name</label>
-                  <input 
-                      name="name" 
-                      className={`form-control ${errors.name ? 'is-invalid' : ''}`} 
-                      style={glassInputStyle} 
-                      onChange={handleInputChange} 
-                      placeholder="Enter full name"
-                  />
+                  <input name="name" className={`form-control ${errors.name ? 'is-invalid' : ''}`} style={glassInputStyle} onChange={handleInputChange} placeholder="Enter full name"/>
                   {errors.name && <div className="invalid-feedback">{errors.name}</div>}
               </div>
-
               <div className="col-12 col-md-6">
                   <label className="form-label small fw-bold text-muted text-uppercase">Date of Birth</label>
                   <div className="input-group">
                       <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.4)'}}><FaCalendarAlt className="text-muted"/></span>
-                      <input 
-                          name="dob" 
-                          type="date" 
-                          className={`form-control ${errors.dob ? 'is-invalid' : ''}`} 
-                          style={glassInputStyle} 
-                          onChange={handleInputChange} 
-                          max={new Date().toISOString().split("T")[0]} 
-                      />
+                      <input name="dob" type="date" className={`form-control ${errors.dob ? 'is-invalid' : ''}`} style={glassInputStyle} onChange={handleInputChange} max={new Date().toISOString().split("T")[0]} />
                       {errors.dob && <div className="invalid-feedback d-block">{errors.dob}</div>}
                   </div>
               </div>
-
               <div className="col-12 col-md-6">
                   <label className="form-label small fw-bold text-muted text-uppercase">Phone Number (KE)</label>
                   <div className="input-group">
                       <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.4)'}}><FaPhoneAlt className="text-muted"/></span>
-                      <input 
-                          name="phone" 
-                          type="tel"
-                          className={`form-control ${errors.phone ? 'is-invalid' : ''}`} 
-                          style={glassInputStyle} 
-                          onChange={handleInputChange} 
-                          placeholder="e.g. 0712 345 678" 
-                      />
+                      <input name="phone" type="tel" className={`form-control ${errors.phone ? 'is-invalid' : ''}`} style={glassInputStyle} onChange={handleInputChange} placeholder="e.g. 0712 345 678" />
                       {errors.phone && <div className="invalid-feedback d-block">{errors.phone}</div>}
                   </div>
               </div>
-
               <div className="col-12 col-md-6">
                   <label className="form-label small fw-bold text-muted text-uppercase">Location</label>
-                  <select 
-                      name="location" 
-                      className={`form-select ${errors.location ? 'is-invalid' : ''}`} 
-                      style={glassInputStyle} 
-                      onChange={handleInputChange} 
-                      value={patientData.location}
-                  >
+                  <select name="location" className={`form-select ${errors.location ? 'is-invalid' : ''}`} style={glassInputStyle} onChange={handleInputChange} value={patientData.location}>
                       <option value="" style={{color: 'black'}}>-- Select County --</option>
-                      {counties.map((c) => (
-                        <option key={c.id} value={c.name} style={{color: 'black'}}>
-                            {(c.code || '000').toString().padStart(3,'0')} - {c.name}
-                        </option>
-                      ))}
+                      {counties.map((c) => (<option key={c.id} value={c.name} style={{color: 'black'}}>{(c.code || '000').toString().padStart(3,'0')} - {c.name}</option>))}
                   </select>
                   {errors.location && <div className="invalid-feedback">{errors.location}</div>}
               </div>
-
               <div className="col-12">
                   <label className="form-label small fw-bold text-muted text-uppercase">Observed Symptoms</label>
-                  <textarea 
-                      name="symptoms" 
-                      className="form-control" 
-                      style={glassInputStyle} 
-                      onChange={handleInputChange} 
-                      rows="3" 
-                      placeholder="Coughing, wheezing, fever..."
-                  ></textarea>
+                  <textarea name="symptoms" className="form-control" style={glassInputStyle} onChange={handleInputChange} rows="3" placeholder="Coughing, wheezing, fever..."></textarea>
               </div>
           </div>
           
@@ -388,7 +372,7 @@ const SmartRecorder = ({ onLogout }) => {
           </div>
 
           {/* RESULTS AREA */}
-          {loading && <div className="mt-5 text-center text-dark-brown animate-pulse">🧠 Running AI Verdict Analysis (Verdict Only Mode)...</div>}
+          {loading && <div className="mt-5 text-center text-dark-brown animate-pulse">🧠 Running Async Analysis (Please Wait)...</div>}
           
           {analysis && (
             <div className={`glass-card mt-5 text-start border-start border-5 animate-slide-in shadow-lg ${analysis.risk_level_output === 'High' ? 'border-danger' : analysis.risk_level_output === 'Medium' ? 'border-warning' : 'border-success'}`}>

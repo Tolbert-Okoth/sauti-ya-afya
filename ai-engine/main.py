@@ -1,19 +1,18 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.concurrency import run_in_threadpool
 import os
 import uvicorn
 import shutil
-import gc 
+import uuid
+import gc
 from analyzer import analyze_audio
 
-app = FastAPI(title="SautiYaAfya AI Bridge [SAFETY MODE]")
+app = FastAPI(title="SautiYaAfya Async Engine")
 
-# 🛡️ CORS: ALLOW ALL (Temporary Debugging)
-# This prevents "False Positive" CORS errors when the server errors out.
+# 🛡️ CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 👈 ALLOW EVERYONE
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -22,56 +21,87 @@ app.add_middleware(
 UPLOAD_DIR = "temp_uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# 🧠 IN-MEMORY JOB STORE (The "Ticket" Ledger)
+# Structure: { "job_id": { "status": "processing" | "completed" | "failed", "result": ... } }
+JOBS = {}
+
+def background_worker(job_id: str, file_path: str, threshold: float):
+    """
+    The heavy lifter that runs in the background.
+    It doesn't block the web server.
+    """
+    print(f"👷 WORKER: Starting Job {job_id}")
+    try:
+        # Run the heavy analysis
+        result = analyze_audio(file_path, sensitivity_threshold=threshold)
+        
+        JOBS[job_id] = {
+            "status": "completed",
+            "result": result
+        }
+        print(f"✅ WORKER: Job {job_id} Finished Success")
+        
+    except Exception as e:
+        print(f"❌ WORKER: Job {job_id} Failed: {str(e)}")
+        JOBS[job_id] = {
+            "status": "failed",
+            "error": str(e)
+        }
+    finally:
+        # Cleanup file immediately to save space
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        gc.collect()
+
 @app.get("/")
 def read_root():
-    return {"status": "AI Engine Online", "mode": "Safety Mode"}
+    return {"status": "AI Engine Online", "mode": "Async Ticket System"}
 
 @app.post("/analyze")
-async def analyze_endpoint(
+async def submit_job(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...), 
-    threshold: float = Form(0.75) 
+    threshold: float = Form(0.75)
 ):
-    temp_path = f"{UPLOAD_DIR}/{file.filename}"
-    
+    """
+    1. Receives File
+    2. Returns 'Ticket' (Job ID) immediately (200 OK)
+    3. Starts processing in background
+    """
     try:
-        # 🧹 Pre-emptive Cleanup
-        gc.collect()
+        # Generate Ticket ID
+        job_id = str(uuid.uuid4())
+        temp_path = f"{UPLOAD_DIR}/{job_id}_{file.filename}"
         
-        # 1. SAVE FILE
+        # Save file to disk
         with open(temp_path, "wb") as buffer:
-            size = 0
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk: break
-                size += len(chunk)
-                buffer.write(chunk)
-        
-        print(f"🔍 DIAGNOSTIC: File saved ({size} bytes). Starting Analysis...")
-
-        # 2. RUN ANALYZER
-        # run_in_threadpool prevents blocking the main server heartbeat
-        signal_result = await run_in_threadpool(
-            analyze_audio, 
-            temp_path, 
-            sensitivity_threshold=threshold
-        )
-        
-        # 3. CLEANUP
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+            shutil.copyfileobj(file.file, buffer)
             
-        if signal_result.get("status") == "error":
-            print(f"❌ ANALYZER ERROR: {signal_result.get('message')}")
-            raise HTTPException(status_code=500, detail=signal_result["message"])
-            
-        print("✅ SUCCESS: Sending response.")
-        return signal_result
+        # Initialize Job Status
+        JOBS[job_id] = {"status": "processing"}
+        
+        # Hand off to background worker (Non-blocking!)
+        background_tasks.add_task(background_worker, job_id, temp_path, threshold)
+        
+        print(f"🎫 TICKET ISSUED: {job_id}")
+        return {"job_id": job_id, "status": "queued"}
 
     except Exception as e:
-        if os.path.exists(temp_path): os.remove(temp_path)
-        print(f"❌ SERVER CRASH: {str(e)}")
+        print(f"❌ SUBMIT ERROR: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/status/{job_id}")
+def check_status(job_id: str):
+    """
+    Frontend calls this repeatedly to check if the job is done.
+    """
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return job
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
+    # 🛑 Keep workers=1 to prevent RAM crashes on Free Tier
     uvicorn.run(app, host="0.0.0.0", port=port)
