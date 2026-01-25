@@ -5,14 +5,12 @@ import { auth } from '../firebase';
 import config from '../config'; 
 import LungAnimation from './LungAnimation';
 import AudioVisualizer from './AudioVisualizer'; 
-// import { useTranslation } from '../hooks/useTranslation'; // Uncomment if using
 import { 
   FaMicrophone, FaStop, FaNotesMedical, FaCheckCircle, 
   FaStethoscope, FaPhoneAlt, FaCalendarAlt, FaSignOutAlt 
 } from 'react-icons/fa';
 
 const SmartRecorder = ({ onLogout }) => {
-  // const { t } = useTranslation();
   
   // Recorder State
   const [isRecording, setIsRecording] = useState(false);
@@ -49,8 +47,7 @@ const SmartRecorder = ({ onLogout }) => {
   };
 
   useEffect(() => {
-    // 🚀 NEW: WAKE UP SERVER IMMEDIATELY
-    // This reduces "perceived latency" by starting the cold start early
+    // 🚀 SERVER WARM-UP (Reduces Cold Start Latency)
     const wakeUpServer = async () => {
         try {
             console.log("🔥 Warming up AI Engine...");
@@ -185,10 +182,8 @@ const SmartRecorder = ({ onLogout }) => {
       pythonFormData.append('symptoms', patientData.symptoms || "None reported");
       pythonFormData.append('threshold', systemConfig.confidence_threshold);
 
-      // 🛑 DEBUG: FORCE DIRECT CONNECTION (Bypass Vercel 10s Timeout)
-      console.log("🚀 SENDING DIRECTLY TO RENDER: https://sauti-ya-afya-1.onrender.com/analyze");
-      
-      // ✅ DIRECT URL - Allows long timeouts for Cold Starts
+      // 🚀 SEND TO AI ENGINE
+      console.log("🚀 SENDING TO AI: https://sauti-ya-afya-1.onrender.com/analyze");
       const aiRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
       
       console.log("✅ RESPONSE RECEIVED:", aiRes.data);
@@ -210,8 +205,7 @@ const SmartRecorder = ({ onLogout }) => {
       nodeFormData.append('risk_level', aiResult.risk_level_output);
       nodeFormData.append('biomarkers', JSON.stringify(aiResult.biomarkers));
       
-      // ✅ USE THE REAL IMAGE FROM SERVER
-      // If server sends nothing (rare), fallback to empty string (Node backend handles empty strings fine, just not corrupted data)
+      // ✅ HANDLE VERDICT-ONLY MODE (Empty String fallback)
       nodeFormData.append('spectrogram', aiResult.visualizer?.spectrogram_image || "");
 
       await axios.post(`${config.API_BASE_URL}/patients`, nodeFormData, {
@@ -224,7 +218,6 @@ const SmartRecorder = ({ onLogout }) => {
 
     } catch (err) {
       console.error("❌ UPLOAD ERROR:", err);
-      // 🛑 SHOW ERROR TO USER
       alert(`Analysis Failed: ${err.message}`);
       setSaveStatus('error');
     } finally {
@@ -261,7 +254,7 @@ const SmartRecorder = ({ onLogout }) => {
               )}
           </div>
           
-          {/* Input Form - Desktop Grid */}
+          {/* Input Form */}
           <div className="row g-4 text-start">
               <div className="col-12 col-md-6">
                   <label className="form-label small fw-bold text-muted text-uppercase">Patient Name</label>
@@ -316,11 +309,9 @@ const SmartRecorder = ({ onLogout }) => {
                       onChange={handleInputChange} 
                       value={patientData.location}
                   >
-                      {/* 🛑 FIX 2: Force color on Options to prevent invisible text */}
                       <option value="" style={{color: 'black'}}>-- Select County --</option>
                       {counties.map((c) => (
                         <option key={c.id} value={c.name} style={{color: 'black'}}>
-                            {/* 🛑 FIX 3: Safe Access to code */}
                             {(c.code || '000').toString().padStart(3,'0')} - {c.name}
                         </option>
                       ))}
@@ -406,15 +397,25 @@ const SmartRecorder = ({ onLogout }) => {
                       </div>
                   </div>
 
-                  {/* Visualizer */}
+                  {/* Visualizer - NOW HANDLES EMPTY IMAGES GRACEFULLY */}
                   <div className="col-12 col-lg-6">
                       <div className="h-100 d-flex flex-column">
                           <label className="small fw-bold text-muted text-uppercase mb-3">Audio Spectrogram Analysis</label>
                           <div className="flex-grow-1 rounded-3 overflow-hidden border shadow-sm">
-                            <AudioVisualizer 
-                                spectrogramData={analysis.visualizer?.spectrogram_image} 
-                                riskLevel={analysis.risk_level_output}
-                            />
+                            {analysis.visualizer?.spectrogram_image ? (
+                                <AudioVisualizer 
+                                    spectrogramData={analysis.visualizer?.spectrogram_image} 
+                                    riskLevel={analysis.risk_level_output}
+                                />
+                            ) : (
+                                <div className="d-flex align-items-center justify-content-center h-100 bg-light text-muted p-5">
+                                    <div className="text-center">
+                                        <FaStethoscope size={40} className="mb-3 opacity-25"/>
+                                        <p className="mb-0 small fw-bold">Visual Analysis Skipped</p>
+                                        <small>Optimized for Speed</small>
+                                    </div>
+                                </div>
+                            )}
                           </div>
                       </div>
                   </div>
