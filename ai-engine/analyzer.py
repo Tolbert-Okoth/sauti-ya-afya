@@ -3,8 +3,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module="librosa")
 
 import librosa
 import numpy as np
-import base64
-import io
 import torch
 from torchvision import transforms, models
 from PIL import Image
@@ -49,7 +47,7 @@ preprocess_ai = transforms.Compose([
 
 def analyze_audio(file_path, sensitivity_threshold=0.75):
     try:
-        print("--- [STEP 1] Starting Analysis (Aggressive Memory Saving) ---")
+        print("--- [STEP 1] Starting Analysis (Verdict Only Mode) ---")
         
         # 1. MANUAL FFMPEG (5 SECONDS)
         command = [
@@ -72,54 +70,40 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         print(f"--- [STEP 2] Decoded {len(y)} samples ---")
 
         # 2. LIGHTWEIGHT DSP
-        # Calculate stats immediately
         rms_energy = float(np.mean(librosa.feature.rms(y=y)))
         spectral_flatness = librosa.feature.spectral_flatness(y=y)[0]
         tonality_score = float(1.0 - np.mean(spectral_flatness)) 
         
         print("--- [STEP 3] DSP Complete ---")
 
-        # 3. SPECTROGRAM (Step-by-Step Memory Clearing)
+        # 3. INTERNAL SPECTROGRAM (For AI Eyes Only - Aggressive Cleanup)
         
-        # A. Create Raw Spectrogram
+        # A. Raw Spectrogram
         S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
-        
-        # 🗑️ DELETE AUDIO IMMEDIATELY (Drop the first ball)
         del y 
         gc.collect() 
 
-        # B. Convert to DB
+        # B. DB Conversion
         S_dB = librosa.power_to_db(S, ref=np.max)
-        
-        # 🗑️ DELETE RAW SPECTROGRAM IMMEDIATELY
         del S
         gc.collect()
 
-        # C. Normalize for Image
+        # C. Normalization
         s_min, s_max = S_dB.min(), S_dB.max()
         s_norm = 255 * (S_dB - s_min) / (s_max - s_min)
         s_norm = s_norm.astype(np.uint8)
-
-        # 🗑️ DELETE DB SPECTROGRAM IMMEDIATELY
         del S_dB
         gc.collect()
 
-        # D. Create Image
+        # D. Image Creation (Internal Use Only)
         img_data = np.flipud(s_norm)
         img = Image.fromarray(img_data).convert('RGB')
         
-        # 🗑️ DELETE NORM ARRAY IMMEDIATELY
         del s_norm
         del img_data
         gc.collect()
 
-        # E. Save to JPEG Buffer (Tiny 4KB)
-        buf = io.BytesIO()
-        img.save(buf, format='JPEG', quality=50) 
-        spectrogram_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-        buf.close()
-        
-        print("--- [STEP 4] Diet Spectrogram Generated ---")
+        print("--- [STEP 4] Internal Image Created (Not Saving to Output) ---")
 
         # 4. AI INFERENCE
         ai_diagnosis = "Unknown"
@@ -152,8 +136,8 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                 "prob_normal": round(ai_probs["Normal"], 3)
             },
             "visualizer": { 
-                # ✅ SENDING TINY JPEG
-                "spectrogram_image": f"data:image/jpeg;base64,{spectrogram_b64}" 
+                # ✅ EMPTY STRING: Zero Payload = Zero Crash
+                "spectrogram_image": "" 
             },
             "preliminary_assessment": f"{ai_diagnosis} Pattern",
             "risk_level_output": "High" if ai_diagnosis != "Normal" else "Low"
