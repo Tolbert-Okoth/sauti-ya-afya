@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import gc 
 import subprocess 
 import os
+import time
 
 # 🛑 LIMIT THREADS (Crucial for Render Free Tier)
 torch.set_num_threads(1) 
@@ -47,17 +48,23 @@ preprocess_ai = transforms.Compose([
 
 def analyze_audio(file_path, sensitivity_threshold=0.75):
     try:
-        print("--- [STEP 1] Starting Analysis (Verdict Only Mode) ---")
+        start_time = time.time()
+        print(f"--- [START] Analysis Job Started ---")
         
-        # 1. MANUAL FFMPEG (5 SECONDS)
+        # 1. TURBO FFMPEG (The Fix for Free Tier Deadlocks)
+        # -threads 1: Forces single-threaded processing to match the 0.1 vCPU limit.
+        # -preset ultrafast: Sacrifices tiny bits of quality for maximum speed.
         command = [
             'ffmpeg', '-y', '-i', file_path,
             '-f', 's16le', '-acodec', 'pcm_s16le',
             '-ar', '16000', '-ac', '1',
             '-t', '5', 
+            '-threads', '1',  # 🚀 CRITICAL FIX
+            '-preset', 'ultrafast', # 🚀 SPEED BOOST
             '-loglevel', 'error', '-'
         ]
 
+        print("--- [STEP 1] Running Turbo FFmpeg... ---")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = process.communicate()
         
@@ -67,7 +74,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         # Load Audio
         y = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
         sr = 16000
-        print(f"--- [STEP 2] Decoded {len(y)} samples ---")
+        print(f"--- [STEP 2] Decoded {len(y)} samples ({time.time() - start_time:.2f}s) ---")
 
         # 2. LIGHTWEIGHT DSP
         rms_energy = float(np.mean(librosa.feature.rms(y=y)))
@@ -76,7 +83,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         
         print("--- [STEP 3] DSP Complete ---")
 
-        # 3. INTERNAL SPECTROGRAM (For AI Eyes Only - Aggressive Cleanup)
+        # 3. INTERNAL SPECTROGRAM (Aggressive Memory Cleanup)
         
         # A. Raw Spectrogram
         S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
@@ -124,7 +131,8 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         del img
         gc.collect()
         
-        print(f"--- [STEP 5] AI Result: {ai_diagnosis} ---")
+        elapsed = time.time() - start_time
+        print(f"--- [STEP 5] AI Result: {ai_diagnosis} (Total Time: {elapsed:.2f}s) ---")
 
         return {
             "status": "success",
@@ -136,7 +144,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                 "prob_normal": round(ai_probs["Normal"], 3)
             },
             "visualizer": { 
-                # ✅ EMPTY STRING: Zero Payload = Zero Crash
+                # ✅ EMPTY STRING: Verdict Only Mode
                 "spectrogram_image": "" 
             },
             "preliminary_assessment": f"{ai_diagnosis} Pattern",
