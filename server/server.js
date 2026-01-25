@@ -321,58 +321,78 @@ app.get('/api/system-config', verifyToken, async (req, res) => {
     res.json({ confidence_threshold: 0.75 });
 });
 
-// ✅ SAVE PATIENT (Fixed: Handles Empty Spectrograms Safely)
+// ✅ SAVE PATIENT (BULLETPROOF VERSION)
+// This updated version handles upload failures gracefully so the app doesn't crash.
 app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) => {
   try {
+    console.log("📝 Received Save Request for:", req.body.name);
+
     const { 
         name, age, dob, location, phone, symptoms, 
         diagnosis, risk_level, biomarkers, spectrogram 
     } = req.body;
     
-    // 1. Handle Audio Upload (Standard)
+    // --- 1. SAFE AUDIO UPLOAD ---
+    // If audio upload fails (timeout/network), we log it but continue saving the record.
     let recordingUrl = null;
     if (req.file) {
-        console.log("Uploading Audio to Cloudinary...");
-        const result = await uploadToCloudinary(req.file.buffer, 'sautiyaafya-audio');
-        recordingUrl = result.secure_url; 
-        console.log(`[Cloud] Audio Uploaded: ${recordingUrl}`);
+        try {
+            console.log("🔹 Uploading Audio to Cloudinary...");
+            const result = await uploadToCloudinary(req.file.buffer, 'sautiyaafya-audio');
+            recordingUrl = result.secure_url; 
+            console.log(`✅ Audio Uploaded: ${recordingUrl}`);
+        } catch (audioErr) {
+            console.error("⚠️ AUDIO UPLOAD FAILED (Skipping):", audioErr.message);
+            // We continue saving even if audio upload fails!
+        }
     }
 
-    // 2. Handle Spectrogram (The Fix for 500 Error)
-    // - If it's empty (Verdict Only), we skip upload.
-    // - If it's a real Base64 image, we upload it.
+    // --- 2. SAFE SPECTROGRAM HANDLING ---
+    // Handles empty strings from "Verdict Only" mode without crashing.
     let finalSpectrogram = "";
-    
     if (spectrogram && spectrogram.startsWith('data:image')) {
         try {
-             console.log("Uploading Spectrogram to Cloudinary...");
+             console.log("🔹 Uploading Spectrogram...");
              const specResult = await cloudinary.uploader.upload(spectrogram, {
                  folder: 'sauti_spectrograms'
              });
              finalSpectrogram = specResult.secure_url;
-        } catch (e) {
-            console.log("⚠️ Spectrogram upload skipped:", e.message);
-            // We don't crash, we just leave it empty
+        } catch (specErr) {
+            console.error("⚠️ SPECTROGRAM UPLOAD FAILED (Skipping):", specErr.message);
         }
     } else {
-        // It's just text or empty string, save as is
+        // Keep it empty/text if it's not a real image
         finalSpectrogram = spectrogram || "";
     }
 
-    // 3. Handle Biomarkers JSON Parsing (Prevents DB Type Errors)
-    let safeBiomarkers = biomarkers;
-    if (typeof biomarkers === 'string') {
-        try {
+    // --- 3. SAFE BIOMARKERS PARSING ---
+    // Prevents "Invalid JSON" errors from crashing the database insert.
+    let safeBiomarkers = {};
+    try {
+        if (typeof biomarkers === 'string') {
             safeBiomarkers = JSON.parse(biomarkers);
-        } catch (e) {
-            console.log("⚠️ Invalid biomarkers JSON, saving raw.");
+        } else {
+            safeBiomarkers = biomarkers || {};
         }
+    } catch (parseErr) {
+        console.error("⚠️ JSON Parse Error (Using empty obj):", parseErr.message);
+        safeBiomarkers = {}; 
     }
 
-    const email = req.user.email;
-    const userRes = await db.query('SELECT county_id FROM users WHERE email = $1', [email]);
-    const county_id = (userRes.rows.length > 0) ? userRes.rows[0].county_id : 47; 
+    // --- 4. SAFE DATE HANDLING ---
+    // Postgres throws error on empty string dates. Convert "" to NULL.
+    const safeDob = dob === "" ? null : dob;
 
+    const email = req.user.email;
+    let county_id = 47; // Default Nairobi
+    try {
+        const userRes = await db.query('SELECT county_id FROM users WHERE email = $1', [email]);
+        if (userRes.rows.length > 0) county_id = userRes.rows[0].county_id;
+    } catch (dbErr) {
+        console.error("⚠️ County Lookup Failed (Using default):", dbErr.message);
+    }
+
+    // --- 5. DATABASE INSERT ---
     const query = `
       INSERT INTO patients 
       (name, age, dob, location, phone, symptoms, diagnosis, risk_level, biomarkers, county_id, spectrogram, recording_url)
@@ -381,14 +401,21 @@ app.post('/api/patients', verifyToken, upload.single('file'), async (req, res) =
     `;
     
     const newPatient = await db.query(query, [
-        name, age, dob, location, phone, symptoms, diagnosis, 
+        name, age, safeDob, location, phone, symptoms, diagnosis, 
         risk_level, safeBiomarkers, county_id, finalSpectrogram, recordingUrl
     ]);
+    
+    console.log("✅ Patient Saved Successfully!");
     res.json(newPatient.rows[0]);
 
   } catch (err) {
-    console.error("Upload Error:", err);
-    res.status(500).json({ message: "Failed to save patient record." });
+    // 🛑 CRITICAL LOGGING: This will show up in Render Logs
+    console.error("❌ CRITICAL SAVE ERROR:", err);
+    console.error("❌ SQL State:", err.code); 
+    res.status(500).json({ 
+        message: "Failed to save patient record.",
+        error: err.message 
+    });
   }
 });
 
