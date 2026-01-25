@@ -1,3 +1,13 @@
+import os
+
+# 🚀 CRITICAL: FORCE SINGLE THREADING BEFORE IMPORTS
+# This prevents Numpy/Librosa/Scipy from deadlocking on Free Tier
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="librosa")
 
@@ -9,10 +19,9 @@ from PIL import Image
 import torch.nn.functional as F
 import gc 
 import subprocess 
-import os
 import time
 
-# 🛑 LIMIT THREADS (Crucial for Render Free Tier)
+# 🛑 LIMIT TORCH THREADS
 torch.set_num_threads(1) 
 
 print("🔄 Loading Lite Brain...")
@@ -49,22 +58,19 @@ preprocess_ai = transforms.Compose([
 def analyze_audio(file_path, sensitivity_threshold=0.75):
     try:
         start_time = time.time()
-        print(f"--- [START] Analysis Job Started ---")
+        print(f"--- [START] Job Started ---")
         
-        # 1. TURBO FFMPEG (The Fix for Free Tier Deadlocks)
-        # -threads 1: Forces single-threaded processing to match the 0.1 vCPU limit.
-        # -preset ultrafast: Sacrifices tiny bits of quality for maximum speed.
+        # 1. TURBO FFMPEG
         command = [
             'ffmpeg', '-y', '-i', file_path,
             '-f', 's16le', '-acodec', 'pcm_s16le',
             '-ar', '16000', '-ac', '1',
             '-t', '5', 
-            '-threads', '1',  # 🚀 CRITICAL FIX
-            '-preset', 'ultrafast', # 🚀 SPEED BOOST
+            '-threads', '1',  
+            '-preset', 'ultrafast',
             '-loglevel', 'error', '-'
         ]
 
-        print("--- [STEP 1] Running Turbo FFmpeg... ---")
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = process.communicate()
         
@@ -76,41 +82,33 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         sr = 16000
         print(f"--- [STEP 2] Decoded {len(y)} samples ({time.time() - start_time:.2f}s) ---")
 
-        # 2. LIGHTWEIGHT DSP
-        rms_energy = float(np.mean(librosa.feature.rms(y=y)))
-        spectral_flatness = librosa.feature.spectral_flatness(y=y)[0]
-        tonality_score = float(1.0 - np.mean(spectral_flatness)) 
-        
-        print("--- [STEP 3] DSP Complete ---")
+        # ❌ SKIPPED: DSP Calculations (Tonality/RMS)
+        # This was causing the CPU Deadlock.
+        tonality_score = 0.5 # Default placeholder
 
-        # 3. INTERNAL SPECTROGRAM (Aggressive Memory Cleanup)
-        
-        # A. Raw Spectrogram
+        # 3. INTERNAL SPECTROGRAM
+        # We go straight to the image generation which AI needs.
         S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
         del y 
         gc.collect() 
 
-        # B. DB Conversion
         S_dB = librosa.power_to_db(S, ref=np.max)
         del S
         gc.collect()
 
-        # C. Normalization
         s_min, s_max = S_dB.min(), S_dB.max()
         s_norm = 255 * (S_dB - s_min) / (s_max - s_min)
         s_norm = s_norm.astype(np.uint8)
         del S_dB
         gc.collect()
 
-        # D. Image Creation (Internal Use Only)
         img_data = np.flipud(s_norm)
         img = Image.fromarray(img_data).convert('RGB')
-        
         del s_norm
         del img_data
         gc.collect()
 
-        print("--- [STEP 4] Internal Image Created (Not Saving to Output) ---")
+        print(f"--- [STEP 3] Internal Image Created ({time.time() - start_time:.2f}s) ---")
 
         # 4. AI INFERENCE
         ai_diagnosis = "Unknown"
@@ -132,7 +130,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         gc.collect()
         
         elapsed = time.time() - start_time
-        print(f"--- [STEP 5] AI Result: {ai_diagnosis} (Total Time: {elapsed:.2f}s) ---")
+        print(f"--- [SUCCESS] Result: {ai_diagnosis} (Total: {elapsed:.2f}s) ---")
 
         return {
             "status": "success",
@@ -144,7 +142,6 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                 "prob_normal": round(ai_probs["Normal"], 3)
             },
             "visualizer": { 
-                # ✅ EMPTY STRING: Verdict Only Mode
                 "spectrogram_image": "" 
             },
             "preliminary_assessment": f"{ai_diagnosis} Pattern",
