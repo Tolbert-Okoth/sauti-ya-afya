@@ -8,7 +8,7 @@ import AudioVisualizer from './AudioVisualizer';
 import { 
   FaMicrophone, FaStop, FaNotesMedical, FaCheckCircle, 
   FaStethoscope, FaPhoneAlt, FaCalendarAlt, FaSignOutAlt,
-  FaServer, FaCircle 
+  FaServer, FaCircle, FaInfoCircle, FaChartBar
 } from 'react-icons/fa';
 
 const SmartRecorder = ({ onLogout }) => {
@@ -134,6 +134,27 @@ const SmartRecorder = ({ onLogout }) => {
       return `${years}y`;
   };
 
+  // 🧠 SMART EXPLANATION GENERATOR
+  const getClinicalExplanation = (result) => {
+      if (!result || !result.biomarkers) return "No data available.";
+      
+      const bio = result.biomarkers;
+      const diag = result.preliminary_assessment.replace(' Pattern', '');
+      const p_pneumonia = (bio.prob_pneumonia * 100).toFixed(0);
+      const p_asthma = (bio.prob_asthma * 100).toFixed(0);
+      const p_normal = (bio.prob_normal * 100).toFixed(0);
+
+      if (diag === "Pneumonia") {
+          return `The AI detected acoustic signatures consistent with lung consolidation or crackles (${p_pneumonia}% confidence). These patterns strongly outweigh the characteristics of normal breath sounds (${p_normal}%) or wheezing.`;
+      } else if (diag === "Asthma") {
+          return `The analysis identified high-frequency continuous sounds typical of wheezing (${p_asthma}% confidence). This pattern is distinct from the clear airflow found in normal recordings.`;
+      } else if (diag === "Normal") {
+          return `The recording exhibits clear, unobstructed airflow patterns (${p_normal}% match). No significant adventitious sounds (like crackles or wheezes) were detected above the risk threshold.`;
+      } else {
+          return "The audio pattern is inconclusive. Please ensure the recording is clear of background noise and try again.";
+      }
+  };
+
   const startRecording = async () => {
     if (!validateForm()) return;
     try {
@@ -181,36 +202,28 @@ const SmartRecorder = ({ onLogout }) => {
     cancelAnimationFrame(animationRef.current);
   };
 
-  // 🔄 THE NEW ASYNC STOP HANDLER (Ticket System)
   const handleStop = async () => {
     setLoading(true);
     const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
     const calculatedAge = calculateAge(patientData.dob);
 
     try {
-      // 1. Prepare Upload
       const pythonFormData = new FormData();
       pythonFormData.append('file', audioBlob, 'recording.webm');
       pythonFormData.append('threshold', systemConfig.confidence_threshold);
 
       console.log("🎫 SUBMITTING JOB TICKET...");
-      
-      // 2. Submit & Get Ticket
       const submitRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
       const jobId = submitRes.data.job_id;
       console.log(`✅ JOB STARTED. TICKET: ${jobId}`);
 
-      // 3. Polling Loop
       let aiResult = null;
       let attempts = 0;
-      const maxAttempts = 60; // 2 mins max timeout
+      const maxAttempts = 60; 
 
       while (attempts < maxAttempts) {
           attempts++;
-          // Wait 2 seconds
           await new Promise(resolve => setTimeout(resolve, 2000));
-          
-          // Check Status
           const statusRes = await axios.get(`https://sauti-ya-afya-1.onrender.com/status/${jobId}`);
           console.log(`⏳ Poll #${attempts}: ${statusRes.data.status}`);
 
@@ -228,7 +241,6 @@ const SmartRecorder = ({ onLogout }) => {
       setAnalysis(aiResult);
       setSaveStatus('saving');
 
-      // 4. Save to Node Database
       const token = await auth.currentUser.getIdToken();
       const nodeFormData = new FormData();
       nodeFormData.append('file', audioBlob, 'recording.webm');
@@ -241,7 +253,7 @@ const SmartRecorder = ({ onLogout }) => {
       nodeFormData.append('diagnosis', aiResult.preliminary_assessment);
       nodeFormData.append('risk_level', aiResult.risk_level_output);
       nodeFormData.append('biomarkers', JSON.stringify(aiResult.biomarkers));
-      nodeFormData.append('spectrogram', ""); // Verdict Only Mode
+      nodeFormData.append('spectrogram', ""); 
 
       await axios.post(`${config.API_BASE_URL}/patients`, nodeFormData, {
         headers: { 
@@ -279,8 +291,6 @@ const SmartRecorder = ({ onLogout }) => {
                   </div>
                   <div>
                       <h4 className="fw-bold text-dark-brown mb-0">New Screening</h4>
-                      
-                      {/* 🟢 SERVER STATUS BADGE */}
                       <div className="d-flex align-items-center mt-1">
                         <small className="text-muted me-2">AI Engine Status:</small>
                         {serverStatus === 'waking' && (
@@ -359,7 +369,7 @@ const SmartRecorder = ({ onLogout }) => {
                     className="btn btn-outline-danger btn-lg rounded-pill shadow-sm py-3" 
                     style={{borderWidth: '2px'}} 
                     onClick={startRecording}
-                    disabled={serverStatus !== 'ready'} // 🛑 PREVENT RECORDING UNTIL WARM
+                    disabled={serverStatus !== 'ready'} 
                   >
                     {serverStatus !== 'ready' ? '⏳ Waiting for AI...' : <><FaMicrophone className="me-2"/> Start Recording</>}
                   </button>
@@ -391,11 +401,12 @@ const SmartRecorder = ({ onLogout }) => {
                       <p className="text-muted mb-4 fs-5">Risk Level: <strong>{analysis.risk_level_output.toUpperCase()}</strong></p>
 
                       <div className="p-4 rounded-3 shadow-sm mb-3" style={{background: 'rgba(255,255,255,0.7)'}}>
-                          <label className="small fw-bold text-muted text-uppercase mb-3 d-block">AI Confidence Scores</label>
+                          <label className="small fw-bold text-muted text-uppercase mb-3 d-block"><FaChartBar className="me-2"/>AI Confidence Scores</label>
                           
+                          {/* Pneumonia */}
                           <div className="mb-3">
                               <div className="d-flex justify-content-between mb-1">
-                                  <span>Pneumonia Probability</span>
+                                  <span>Pneumonia</span>
                                   <span className="fw-bold">{((analysis.biomarkers?.prob_pneumonia || 0) * 100).toFixed(1)}%</span>
                               </div>
                               <div className="progress" style={{height: '10px'}}>
@@ -403,37 +414,41 @@ const SmartRecorder = ({ onLogout }) => {
                               </div>
                           </div>
 
-                          <div className="mb-1">
+                          {/* Asthma */}
+                          <div className="mb-3">
                               <div className="d-flex justify-content-between mb-1">
-                                  <span>Asthma Probability</span>
+                                  <span>Asthma</span>
                                   <span className="fw-bold">{((analysis.biomarkers?.prob_asthma || 0) * 100).toFixed(1)}%</span>
                               </div>
                               <div className="progress" style={{height: '10px'}}>
                                   <div className="progress-bar bg-warning" style={{width: `${(analysis.biomarkers?.prob_asthma || 0) * 100}%`}}></div>
                               </div>
                           </div>
+
+                          {/* 🟢 NEW: Normal Pattern */}
+                          <div className="mb-1">
+                              <div className="d-flex justify-content-between mb-1">
+                                  <span>Normal / Healthy</span>
+                                  <span className="fw-bold">{((analysis.biomarkers?.prob_normal || 0) * 100).toFixed(1)}%</span>
+                              </div>
+                              <div className="progress" style={{height: '10px'}}>
+                                  <div className="progress-bar bg-success" style={{width: `${(analysis.biomarkers?.prob_normal || 0) * 100}%`}}></div>
+                              </div>
+                          </div>
                       </div>
                   </div>
 
-                  {/* Visualizer - VERDICT ONLY PLACEHOLDER */}
+                  {/* Interpretation & Visuals */}
                   <div className="col-12 col-lg-6">
                       <div className="h-100 d-flex flex-column">
-                          <label className="small fw-bold text-muted text-uppercase mb-3">Audio Spectrogram Analysis</label>
-                          <div className="flex-grow-1 rounded-3 overflow-hidden border shadow-sm">
-                            {analysis.visualizer?.spectrogram_image ? (
-                                <AudioVisualizer 
-                                    spectrogramData={analysis.visualizer?.spectrogram_image} 
-                                    riskLevel={analysis.risk_level_output}
-                                />
-                            ) : (
-                                <div className="d-flex align-items-center justify-content-center h-100 bg-light text-muted p-5">
-                                    <div className="text-center">
-                                        <FaStethoscope size={40} className="mb-3 opacity-25"/>
-                                        <p className="mb-0 small fw-bold">Verdict-Only Mode</p>
-                                        <small className="d-block text-muted">Image generation skipped for speed</small>
-                                    </div>
-                                </div>
-                            )}
+                          <label className="small fw-bold text-muted text-uppercase mb-3"><FaInfoCircle className="me-2"/>Clinical Interpretation</label>
+                          
+                          {/* 📝 SMART EXPLANATION BOX */}
+                          <div className="flex-grow-1 rounded-3 p-4 border border-info shadow-sm" style={{backgroundColor: '#e3f2fd'}}>
+                              <h5 className="fw-bold text-dark-brown mb-3">Analysis Summary</h5>
+                              <p className="text-dark mb-0" style={{lineHeight: '1.6'}}>
+                                  {getClinicalExplanation(analysis)}
+                              </p>
                           </div>
                       </div>
                   </div>

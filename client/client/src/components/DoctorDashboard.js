@@ -2,12 +2,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { auth } from '../firebase';
-import config from '../config'; // ✅ IMPORT CONFIG
+import config from '../config'; 
 import OutbreakMap from './OutbreakMap';
 import AudioVisualizer from './AudioVisualizer'; 
 import { 
   FaWhatsapp, FaCheck, FaSync, FaUserMd, FaCircle, 
-  FaSpinner, FaExclamationTriangle 
+  FaSpinner, FaExclamationTriangle, FaNotesMedical, FaChartBar, FaInfoCircle
 } from 'react-icons/fa';
 
 const DoctorDashboard = () => {
@@ -22,7 +22,6 @@ const DoctorDashboard = () => {
       if (isBackground) setIsUpdating(true);
       
       const token = await auth.currentUser.getIdToken();
-      // ✅ USE CONFIG API URL
       const res = await axios.get(`${config.API_BASE_URL}/patients?t=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -54,7 +53,6 @@ const DoctorDashboard = () => {
     if(window.confirm("Mark case as resolved and remove from triage list?")) {
         try {
             const token = await auth.currentUser.getIdToken();
-            // ✅ USE CONFIG API URL
             await axios.delete(`${config.API_BASE_URL}/patients/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -66,7 +64,7 @@ const DoctorDashboard = () => {
     }
   };
 
-  if (loading) return <div className="text-center mt-5 text-dark-brown">Loading Triage Data...</div>;
+  if (loading) return <div className="text-center mt-5 text-dark-brown animate-pulse">Loading Triage Data...</div>;
 
   return (
     <div className="container-fluid p-0">
@@ -172,7 +170,7 @@ const DoctorDashboard = () => {
   );
 };
 
-// --- SUB-COMPONENT: CaseReviewModal (NOW WITH REAL AUDIO) ---
+// --- SUB-COMPONENT: CaseReviewModal ---
 const CaseReviewModal = ({ patient, onClose, onResolve }) => {
     const [audioBlobUrl, setAudioBlobUrl] = useState(null);
     const [audioLoading, setAudioLoading] = useState(false);
@@ -187,7 +185,6 @@ const CaseReviewModal = ({ patient, onClose, onResolve }) => {
                 setAudioBlobUrl(null);
 
                 try {
-                    // ✅ FIXED LOGIC: Check if it's a full Firebase URL or a local file
                     const fileUrl = patient.recording_url.startsWith('http') 
                         ? patient.recording_url 
                         : `${config.SERVER_URL}/uploads/${patient.recording_url}`;
@@ -208,41 +205,99 @@ const CaseReviewModal = ({ patient, onClose, onResolve }) => {
         }
     }, [patient]);
 
+    // 🧠 CLINICAL INTERPRETATION LOGIC
+    const getClinicalExplanation = () => {
+        const bio = patient.biomarkers || {};
+        const diag = patient.diagnosis ? patient.diagnosis.replace(' Pattern', '') : 'Unknown';
+        const p_pneumonia = ((bio.prob_pneumonia || 0) * 100).toFixed(0);
+        const p_asthma = ((bio.prob_asthma || 0) * 100).toFixed(0);
+        const p_normal = ((bio.prob_normal || 0) * 100).toFixed(0);
+
+        if (diag === "Pneumonia") {
+            return `AI detected acoustic signatures consistent with lung consolidation or crackles (${p_pneumonia}%). Overweighs normal breath sounds (${p_normal}%).`;
+        } else if (diag === "Asthma") {
+            return `Analysis identified high-frequency continuous sounds typical of wheezing (${p_asthma}%). Distinct from clear airflow.`;
+        } else if (diag === "Normal") {
+            return `Clear, unobstructed airflow patterns detected (${p_normal}%). No significant adventitious sounds found.`;
+        } else {
+            return "Audio pattern is inconclusive. Clinical correlation recommended.";
+        }
+    };
+
     return (
         <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)' }}>
-            <div className="modal-dialog modal-lg modal-dialog-centered">
+            <div className="modal-dialog modal-xl modal-dialog-centered">
                 <div className="modal-content glass-card border-0 overflow-hidden" style={{background: 'rgba(255,255,255,0.95)'}}>
                     <div className="modal-header border-bottom border-light">
-                        <h5 className="modal-title fw-bold text-dark-brown">🩺 Clinical Case Review</h5>
+                        <h5 className="modal-title fw-bold text-dark-brown"><FaNotesMedical className="me-2"/>Clinical Case Review</h5>
                         <button type="button" className="btn-close" onClick={onClose}></button>
                     </div>
                     <div className="modal-body p-4">
                         <div className="row">
+                            {/* LEFT SIDE: Patient Data & Explanation */}
                             <div className="col-md-5 border-end border-light">
                                 <h4 className="fw-bold text-dark-brown">{patient.name}</h4>
                                 <p className="text-muted mb-4">{patient.age} • {patient.location}</p>
+                                
+                                <div className="mb-4">
+                                   <label className="small fw-bold text-muted text-uppercase mb-2"><FaChartBar className="me-1"/> AI Confidence</label>
+                                   <div className="bg-light p-3 rounded">
+                                       {/* Pneumonia */}
+                                       <div className="d-flex justify-content-between small mb-1">
+                                           <span>Pneumonia</span>
+                                           <span className="fw-bold">{((patient.biomarkers?.prob_pneumonia || 0) * 100).toFixed(1)}%</span>
+                                       </div>
+                                       <div className="progress mb-2" style={{height: '6px'}}>
+                                           <div className="progress-bar bg-danger" style={{width: `${(patient.biomarkers?.prob_pneumonia || 0) * 100}%`}}></div>
+                                       </div>
+
+                                       {/* Asthma */}
+                                       <div className="d-flex justify-content-between small mb-1">
+                                           <span>Asthma</span>
+                                           <span className="fw-bold">{((patient.biomarkers?.prob_asthma || 0) * 100).toFixed(1)}%</span>
+                                       </div>
+                                       <div className="progress mb-2" style={{height: '6px'}}>
+                                           <div className="progress-bar bg-warning" style={{width: `${(patient.biomarkers?.prob_asthma || 0) * 100}%`}}></div>
+                                       </div>
+
+                                       {/* 🟢 Normal */}
+                                       <div className="d-flex justify-content-between small mb-1">
+                                           <span>Normal</span>
+                                           <span className="fw-bold">{((patient.biomarkers?.prob_normal || 0) * 100).toFixed(1)}%</span>
+                                       </div>
+                                       <div className="progress" style={{height: '6px'}}>
+                                           <div className="progress-bar bg-success" style={{width: `${(patient.biomarkers?.prob_normal || 0) * 100}%`}}></div>
+                                       </div>
+                                   </div>
+                                </div>
+
+                                <div className="mb-3">
+                                   <label className="small fw-bold text-muted text-uppercase mb-2"><FaInfoCircle className="me-1"/> Clinical Interpretation</label>
+                                   <div className="p-3 bg-alice-blue border border-info rounded text-dark small">
+                                       {getClinicalExplanation()}
+                                   </div>
+                                </div>
+
                                 <div className="mb-3">
                                     <label className="small fw-bold text-muted text-uppercase">Symptoms</label>
-                                    <p className="bg-light p-2 rounded small">{patient.symptoms || "None"}</p>
-                                </div>
-                                <div className="mb-3">
-                                     <label className="small fw-bold text-muted text-uppercase">AI Diagnosis</label>
-                                     <p className="text-dark fw-bold">{patient.diagnosis}</p>
+                                    <p className="bg-light p-2 rounded small text-dark fst-italic">"{patient.symptoms || "None"}"</p>
                                 </div>
                             </div>
+
+                            {/* RIGHT SIDE: Visualizer & Audio */}
                             <div className="col-md-7">
                                 <div className="bg-dark rounded mb-3 overflow-hidden position-relative">
-                                    
                                     {/* Spectrogram Visualizer */}
-                                    <div style={{height: '150px'}}>
+                                    <div style={{height: '250px'}}>
                                         {patient.spectrogram ? (
                                             <AudioVisualizer 
                                                 spectrogramData={patient.spectrogram} 
                                                 riskLevel={patient.risk_level}
                                             />
                                         ) : (
-                                            <div className="d-flex align-items-center justify-content-center h-100 text-white-50">
-                                                No Visual Data
+                                            <div className="d-flex flex-column align-items-center justify-content-center h-100 text-white-50">
+                                                <FaNotesMedical size={40} className="mb-2 opacity-25"/>
+                                                <span className="small">Verdict-Only Mode (Image Skipped)</span>
                                             </div>
                                         )}
                                     </div>
@@ -251,9 +306,9 @@ const CaseReviewModal = ({ patient, onClose, onResolve }) => {
                                 {/* 🎵 REAL AUDIO PLAYER */}
                                 <div className="mb-3">
                                     {patient.recording_url ? (
-                                        <div className="text-center p-2 bg-light rounded">
-                                            {audioLoading && <div className="small text-primary"><FaSpinner className="spin"/> Loading Audio...</div>}
-                                            {audioError && <div className="small text-danger"><FaExclamationTriangle/> {audioError}</div>}
+                                        <div className="text-center p-3 bg-light rounded">
+                                            {audioLoading && <div className="small text-primary fw-bold"><FaSpinner className="spin me-2"/> Loading Audio...</div>}
+                                            {audioError && <div className="small text-danger fw-bold"><FaExclamationTriangle/> {audioError}</div>}
                                             
                                             {audioBlobUrl && (
                                                 <audio 
@@ -270,12 +325,12 @@ const CaseReviewModal = ({ patient, onClose, onResolve }) => {
                                     )}
                                 </div>
                                 
-                                <div className="d-grid gap-2">
+                                <div className="d-grid gap-2 d-md-flex justify-content-md-end">
                                     <a href={`https://wa.me/254${patient.phone?.substring(1)}`} target="_blank" rel="noreferrer" className="btn btn-success text-white">
-                                        <FaWhatsapp className="me-2"/> Contact Caregiver
+                                        <FaWhatsapp className="me-2"/> Contact Patient
                                     </a>
                                     <button className="btn btn-primary" onClick={() => onResolve(patient.id)}>
-                                        <FaCheck className="me-2"/> Resolve & Archive
+                                        <FaCheck className="me-2"/> Resolve Case
                                     </button>
                                 </div>
                             </div>
