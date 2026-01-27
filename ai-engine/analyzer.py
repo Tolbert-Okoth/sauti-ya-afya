@@ -12,7 +12,7 @@ import numpy as np
 import torch
 import torchaudio 
 import torchaudio.transforms as T
-import torchaudio.functional as F_audio # For Filtering
+import torchaudio.functional as F_audio # 🛠️ NEEDED FOR FILTER
 from torchvision import transforms, models
 from PIL import Image
 import torch.nn.functional as F
@@ -24,18 +24,22 @@ import random
 # 🛑 LIMIT TORCH THREADS
 torch.set_num_threads(1) 
 
-print("🔄 Loading Robust Brain...")
+print("🔄 Loading Filtered Medical Brain...")
 device = torch.device("cpu")
 model = models.mobilenet_v2(weights=None) 
 
-# 🛠️ CLASS ORDER
+# 🛠️ CLASS ORDER (Must match training!)
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
 SEVERITY_SCORE = {'Pneumonia': 3, 'Asthma': 2, 'Normal': 1, 'Unknown': 0}
 
 # 🏥 HYBRID SYMPTOM WEIGHTS
 SYMPTOM_RISK_BONUS = {
-    'fever': 0.10, 'pain': 0.15, 'breath': 0.15, 
-    'cough': 0.05, 'whistle': 0.20, 'tight': 0.15
+    'fever': 0.10,       # Infection indicator
+    'pain': 0.15,        # Chest pain
+    'breath': 0.15,      # Shortness of breath
+    'cough': 0.05,       
+    'whistle': 0.20,     # 🚨 Strong Asthma Indicator
+    'tight': 0.15        # Asthma Indicator
 }
 
 model.classifier = torch.nn.Sequential(
@@ -51,9 +55,10 @@ try:
         state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
+        # Speed up inference
         model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
         ai_available = True
-        print("✅ Robust AI Model Loaded")
+        print("✅ Filtered AI Model Loaded")
     else:
         print(f"❌ Model not found at {MODEL_PATH}")
 except Exception as e:
@@ -66,12 +71,13 @@ preprocess_ai = transforms.Compose([
 ])
 
 def calculate_rms(chunk):
+    """Measure volume to detect silence"""
     return np.sqrt(np.mean(chunk**2))
 
 def apply_bandpass_filter(waveform, sr=16000):
     """
-    🛡️ MEDICAL FILTER: Keeps only 100Hz - 2000Hz.
-    Removes: Hand rumble (<100Hz) and Static hiss (>2000Hz).
+    🛡️ MEDICAL FILTER (100Hz - 2000Hz)
+    Matches the training logic to remove rumble/static.
     """
     try:
         # High-pass > 100Hz (Removes handling noise)
@@ -86,7 +92,7 @@ def generate_spectrogram(y_chunk, sr=16000):
     try:
         waveform = torch.from_numpy(y_chunk).unsqueeze(0)
         
-        # 🛡️ STEP 1: APPLY FILTER
+        # 🛡️ STEP 1: APPLY FILTER (Critical!)
         waveform = apply_bandpass_filter(waveform, sr)
 
         # 🛡️ STEP 2: GENERATE IMAGE
@@ -97,6 +103,7 @@ def generate_spectrogram(y_chunk, sr=16000):
         spectrogram_db = T.AmplitudeToDB(stype='power', top_db=80)(spectrogram)
         
         # 🛡️ STEP 3: FIXED NORMALIZATION
+        # Maps -80dB to 0dB range into 0-255 pixels
         s_norm = (spectrogram_db + 80) / 80.0  
         s_norm = torch.clamp(s_norm, 0, 1)     
         s_norm = s_norm.byte().squeeze(0).numpy() * 255 
@@ -106,14 +113,19 @@ def generate_spectrogram(y_chunk, sr=16000):
         return None
 
 def predict_with_tta(model, input_tensor):
-    # TTA Logic (Same as before)
+    """Test Time Augmentation: Average 3 predictions for stability"""
+    # 1. Original
     t1 = input_tensor
-    t2 = input_tensor.clone() # Freq Mask
+    
+    # 2. Frequency Mask
+    t2 = input_tensor.clone()
     f_start = random.randint(0, 100)
     t2[:, :, f_start:f_start+10, :] = 0 
-    t3 = input_tensor.clone() # Time Mask
+    
+    # 3. Time Mask
+    t3 = input_tensor.clone()
     t_start = random.randint(0, 100)
-    t3[:, :, :, t_start:t_start+10] = 0 
+    t3[:, :, :, t_start:t_start+10, :] = 0  # Fixed dimension index
     
     batch = torch.cat([t1, t2, t3], dim=0)
     with torch.no_grad():
@@ -125,8 +137,9 @@ def predict_with_tta(model, input_tensor):
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
     try:
         start_time = time.time()
-        print(f"--- [START] Analysis Job (Robust + Filtered) ---")
+        print(f"--- [START] Analysis Job (Filtered + TTA) ---")
         
+        # 1. DECODE AUDIO
         command = [
             'ffmpeg', '-y', '-i', file_path,
             '-f', 's16le', '-acodec', 'pcm_s16le',
@@ -151,8 +164,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
 
         for idx, chunk in enumerate(chunks):
+            # 🔇 Skip Silence
             rms = calculate_rms(chunk)
-            if rms < 0.005: continue # Skip Silence
+            if rms < 0.005: continue 
 
             img = generate_spectrogram(chunk)
             
@@ -164,10 +178,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 chunk_diagnosis = CLASSES[winner_idx]
                 winner_prob = float(probs[winner_idx])
                 
-                # 🛡️ STRICTER THRESHOLD (Reduce False Alarms)
-                # Before: 0.50 -> Now: 0.60
+                # 🛡️ 60% CONFIDENCE FLOOR
                 if winner_prob < 0.60:
-                    chunk_diagnosis = "Normal" # Assume Normal if unsure
+                    chunk_diagnosis = "Normal"
                     chunk_severity = 1
                 else:
                     chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
@@ -175,7 +188,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f})")
                 valid_chunks += 1
 
-                # Conservative Logic: Only override if score is decidedly higher
+                # Update Final Diagnosis if Severity Increases
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
                     final_diagnosis = chunk_diagnosis
@@ -184,7 +197,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         if valid_chunks == 0: final_diagnosis = "Inconclusive"
         elif final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
 
-        # Hybrid Symptom Override
+        # 🏥 SYMPTOM CHECK
         if symptoms:
             symptoms_lower = symptoms.lower()
             risk_bonus = 0.0
@@ -196,7 +209,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + risk_bonus)
                 averaged_probs["Asthma"] = min(0.99, averaged_probs["Asthma"] + (risk_bonus * 0.8))
                 
-                # Re-check winner
+                # Re-Evaluate Winner
                 new_winner = max(averaged_probs, key=averaged_probs.get)
                 if SEVERITY_SCORE[new_winner] > SEVERITY_SCORE[final_diagnosis]:
                     final_diagnosis = new_winner
