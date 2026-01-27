@@ -12,7 +12,7 @@ import numpy as np
 import torch
 import torchaudio 
 import torchaudio.transforms as T
-import torchaudio.functional as F_audio # 🛠️ NEEDED FOR FILTER
+import torchaudio.functional as F_audio 
 from torchvision import transforms, models
 from PIL import Image
 import torch.nn.functional as F
@@ -28,18 +28,14 @@ print("🔄 Loading Filtered Medical Brain...")
 device = torch.device("cpu")
 model = models.mobilenet_v2(weights=None) 
 
-# 🛠️ CLASS ORDER (Must match training!)
+# 🛠️ CLASS ORDER
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
 SEVERITY_SCORE = {'Pneumonia': 3, 'Asthma': 2, 'Normal': 1, 'Unknown': 0}
 
 # 🏥 HYBRID SYMPTOM WEIGHTS
 SYMPTOM_RISK_BONUS = {
-    'fever': 0.10,       # Infection indicator
-    'pain': 0.15,        # Chest pain
-    'breath': 0.15,      # Shortness of breath
-    'cough': 0.05,       
-    'whistle': 0.20,     # 🚨 Strong Asthma Indicator
-    'tight': 0.15        # Asthma Indicator
+    'fever': 0.10, 'pain': 0.15, 'breath': 0.15, 
+    'cough': 0.05, 'whistle': 0.20, 'tight': 0.15
 }
 
 model.classifier = torch.nn.Sequential(
@@ -55,7 +51,6 @@ try:
         state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
-        # Speed up inference
         model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
         ai_available = True
         print("✅ Filtered AI Model Loaded")
@@ -75,14 +70,8 @@ def calculate_rms(chunk):
     return np.sqrt(np.mean(chunk**2))
 
 def apply_bandpass_filter(waveform, sr=16000):
-    """
-    🛡️ MEDICAL FILTER (100Hz - 2000Hz)
-    Matches the training logic to remove rumble/static.
-    """
     try:
-        # High-pass > 100Hz (Removes handling noise)
         filtered = F_audio.highpass_biquad(waveform, sr, cutoff_freq=100.0)
-        # Low-pass < 2000Hz (Removes electronic hiss)
         filtered = F_audio.lowpass_biquad(filtered, sr, cutoff_freq=2000.0)
         return filtered
     except:
@@ -91,19 +80,10 @@ def apply_bandpass_filter(waveform, sr=16000):
 def generate_spectrogram(y_chunk, sr=16000):
     try:
         waveform = torch.from_numpy(y_chunk).unsqueeze(0)
-        
-        # 🛡️ STEP 1: APPLY FILTER (Critical!)
         waveform = apply_bandpass_filter(waveform, sr)
-
-        # 🛡️ STEP 2: GENERATE IMAGE
-        mel_transform = T.MelSpectrogram(
-            sample_rate=sr, n_mels=128, n_fft=2048, hop_length=512, power=2.0
-        )
+        mel_transform = T.MelSpectrogram(sample_rate=sr, n_mels=128, n_fft=2048, hop_length=512, power=2.0)
         spectrogram = mel_transform(waveform)
         spectrogram_db = T.AmplitudeToDB(stype='power', top_db=80)(spectrogram)
-        
-        # 🛡️ STEP 3: FIXED NORMALIZATION
-        # Maps -80dB to 0dB range into 0-255 pixels
         s_norm = (spectrogram_db + 80) / 80.0  
         s_norm = torch.clamp(s_norm, 0, 1)     
         s_norm = s_norm.byte().squeeze(0).numpy() * 255 
@@ -114,15 +94,12 @@ def generate_spectrogram(y_chunk, sr=16000):
 
 def predict_with_tta(model, input_tensor):
     """Test Time Augmentation: Average 3 predictions for stability"""
-    # 1. Original
     t1 = input_tensor
     
-    # 2. Frequency Mask
     t2 = input_tensor.clone()
     f_start = random.randint(0, 100)
     t2[:, :, f_start:f_start+10, :] = 0 
     
-    # 3. Time Mask
     t3 = input_tensor.clone()
     t_start = random.randint(0, 100)
     # 🛠️ FIXED: Removed extra trailing comma/colon causing IndexError
@@ -138,14 +115,12 @@ def predict_with_tta(model, input_tensor):
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
     try:
         start_time = time.time()
-        print(f"--- [START] Analysis Job (Filtered + TTA) ---")
+        print(f"--- [START] Analysis Job (Filtered + TTA + Warning Zone) ---")
         
-        # 1. DECODE AUDIO
         command = [
-            'ffmpeg', '-y', '-i', file_path,
-            '-f', 's16le', '-acodec', 'pcm_s16le',
-            '-ar', '16000', '-ac', '1',
-            '-t', '30', '-threads', '1', '-preset', 'ultrafast', '-loglevel', 'error', '-'
+            'ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le',
+            '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', 
+            '-preset', 'ultrafast', '-loglevel', 'error', '-'
         ]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = process.communicate()
@@ -165,9 +140,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
 
         for idx, chunk in enumerate(chunks):
-            # 🔇 Skip Silence
-            rms = calculate_rms(chunk)
-            if rms < 0.005: continue 
+            if calculate_rms(chunk) < 0.005: continue 
 
             img = generate_spectrogram(chunk)
             
@@ -179,17 +152,22 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 chunk_diagnosis = CLASSES[winner_idx]
                 winner_prob = float(probs[winner_idx])
                 
-                # 🛡️ 60% CONFIDENCE FLOOR
-                if winner_prob < 0.60:
+                # 🛡️ NEW LOGIC: The "Warning Zone"
+                if winner_prob < 0.40:
+                    # Too weak (<40%), assume noise
                     chunk_diagnosis = "Normal"
                     chunk_severity = 1
+                elif winner_prob < 0.60:
+                    # ⚠️ WARN USER (40% - 60%)
+                    # Keep the diagnosis (e.g. Asthma) but assign "Medium" severity
+                    chunk_severity = 1.5 
                 else:
+                    # 🚨 HIGH CONFIDENCE (>60%)
                     chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
                 
-                print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f})")
+                print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity})")
                 valid_chunks += 1
 
-                # Update Final Diagnosis if Severity Increases
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
                     final_diagnosis = chunk_diagnosis
@@ -210,12 +188,31 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + risk_bonus)
                 averaged_probs["Asthma"] = min(0.99, averaged_probs["Asthma"] + (risk_bonus * 0.8))
                 
-                # Re-Evaluate Winner
+                # Re-Evaluate Winner after symptoms
                 new_winner = max(averaged_probs, key=averaged_probs.get)
-                if SEVERITY_SCORE[new_winner] > SEVERITY_SCORE[final_diagnosis]:
+                new_prob = averaged_probs[new_winner]
+                
+                # If symptoms pushed confidence > 60%, upgrade severity
+                if new_prob > 0.60:
+                     highest_severity = max(highest_severity, SEVERITY_SCORE.get(new_winner, 0))
+                
+                if SEVERITY_SCORE.get(new_winner, 0) >= SEVERITY_SCORE.get(final_diagnosis, 0):
                     final_diagnosis = new_winner
 
-        print(f"--- [SUCCESS] Verdict: {final_diagnosis} ---")
+        # 🎯 FINAL VERDICT FORMATTING
+        risk_label = "Low"
+        
+        if final_diagnosis == "Normal":
+            risk_label = "Low"
+        elif highest_severity == 1.5:
+            # The "Grey Area" case
+            final_diagnosis = f"Suspected {final_diagnosis}"
+            risk_label = "Medium"
+        else:
+            # The "High Confidence" case
+            risk_label = "High"
+
+        print(f"--- [SUCCESS] Verdict: {final_diagnosis} (Risk: {risk_label}) ---")
         return {
             "status": "success",
             "biomarkers": {
@@ -227,7 +224,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             },
             "visualizer": { "spectrogram_image": "" },
             "preliminary_assessment": f"{final_diagnosis} Pattern",
-            "risk_level_output": "High" if final_diagnosis != "Normal" else "Low"
+            "risk_level_output": risk_label
         }
 
     except Exception as e:
