@@ -22,18 +22,17 @@ UPLOAD_DIR = "temp_uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # 🧠 IN-MEMORY JOB STORE (The "Ticket" Ledger)
-# Structure: { "job_id": { "status": "processing" | "completed" | "failed", "result": ... } }
 JOBS = {}
 
-def background_worker(job_id: str, file_path: str, threshold: float):
+def background_worker(job_id: str, file_path: str, threshold: float, symptoms: str):
     """
     The heavy lifter that runs in the background.
-    It doesn't block the web server.
+    Now supports HYBRID DIAGNOSIS by passing symptoms to the analyzer.
     """
-    print(f"👷 WORKER: Starting Job {job_id}")
+    print(f"👷 WORKER: Starting Job {job_id} (Symptoms: '{symptoms}')")
     try:
-        # Run the heavy analysis
-        result = analyze_audio(file_path, sensitivity_threshold=threshold)
+        # Run the heavy analysis with symptoms context
+        result = analyze_audio(file_path, symptoms=symptoms, sensitivity_threshold=threshold)
         
         JOBS[job_id] = {
             "status": "completed",
@@ -55,16 +54,17 @@ def background_worker(job_id: str, file_path: str, threshold: float):
 
 @app.get("/")
 def read_root():
-    return {"status": "AI Engine Online", "mode": "Async Ticket System"}
+    return {"status": "AI Engine Online", "mode": "Async Ticket System + Hybrid Diagnosis"}
 
 @app.post("/analyze")
 async def submit_job(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...), 
-    threshold: float = Form(0.75)
+    threshold: float = Form(0.75),
+    symptoms: str = Form("")  # 🏥 NEW: Receive symptoms from Frontend
 ):
     """
-    1. Receives File
+    1. Receives File & Symptoms
     2. Returns 'Ticket' (Job ID) immediately (200 OK)
     3. Starts processing in background
     """
@@ -80,8 +80,8 @@ async def submit_job(
         # Initialize Job Status
         JOBS[job_id] = {"status": "processing"}
         
-        # Hand off to background worker (Non-blocking!)
-        background_tasks.add_task(background_worker, job_id, temp_path, threshold)
+        # Hand off to background worker (Pass symptoms!)
+        background_tasks.add_task(background_worker, job_id, temp_path, threshold, symptoms)
         
         print(f"🎫 TICKET ISSUED: {job_id}")
         return {"job_id": job_id, "status": "queued"}
