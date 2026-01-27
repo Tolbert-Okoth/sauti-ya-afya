@@ -125,7 +125,8 @@ def predict_with_tta(model, input_tensor):
     # 3. Time Mask
     t3 = input_tensor.clone()
     t_start = random.randint(0, 100)
-    t3[:, :, :, t_start:t_start+10, :] = 0  # Fixed dimension index
+    # 🛠️ FIXED: Removed extra trailing comma/colon causing IndexError
+    t3[:, :, :, t_start:t_start+10] = 0  
     
     batch = torch.cat([t1, t2, t3], dim=0)
     with torch.no_grad():
