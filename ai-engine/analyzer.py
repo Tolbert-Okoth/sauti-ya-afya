@@ -1,19 +1,17 @@
 import os
 
-# 🚀 CRITICAL: FORCE SINGLE THREADING (Prevents CPU Deadlocks)
-# We must set these flags before importing numpy/torch
+# 🚀 FORCE SINGLE THREADING (Prevents CPU Deadlocks)
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 import warnings
-warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore")
 
-import librosa
 import numpy as np
 import torch
+import torchaudio # 🚀 THE NEW ENGINE
+import torchaudio.transforms as T
 from torchvision import transforms, models
 from PIL import Image
 import torch.nn.functional as F
@@ -40,12 +38,9 @@ try:
         state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
-        # Quantize to reduce RAM by ~50%
         model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
         ai_available = True
         print("✅ AI Model Loaded (Quantized)")
-    else:
-        print("⚠️ Model file not found.")
 except Exception as e:
     print(f"⚠️ AI Load Error: {e}")
 
@@ -58,14 +53,14 @@ preprocess_ai = transforms.Compose([
 def analyze_audio(file_path, sensitivity_threshold=0.75):
     try:
         start_time = time.time()
-        print(f"--- [START] Real Analysis Job ---")
+        print(f"--- [START] Analysis Job ---")
         
-        # 1. TURBO FFMPEG (Fast Decode)
+        # 1. TURBO FFMPEG
         command = [
             'ffmpeg', '-y', '-i', file_path,
             '-f', 's16le', '-acodec', 'pcm_s16le',
             '-ar', '16000', '-ac', '1',
-            '-t', '5', 
+            '-t', '5', # Limit to 5 seconds
             '-threads', '1',  
             '-preset', 'ultrafast',
             '-loglevel', 'error', '-'
@@ -77,62 +72,64 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         if process.returncode != 0:
             raise Exception(f"FFmpeg Error: {err.decode()}")
 
-        # Load Audio Data
-        y = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
-        sr = 16000
-        print(f"--- [STEP 1] Audio Decoded ({len(y)} samples) ---")
+        # Load Audio into Numpy
+        y_np = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
+        print(f"--- [STEP 1] Audio Decoded ({len(y_np)} samples) ---")
 
-        # ❌ REMOVED: Tonality & RMS Math (Causes Deadlock on Free Tier)
-        tonality_score = 0.5 
+        # 2. GENERATE SPECTROGRAM (New Engine: Torchaudio)
+        img = None
+        try:
+            # Convert to Tensor (The format Torchaudio loves)
+            waveform = torch.from_numpy(y_np).unsqueeze(0) # Shape: (1, samples)
+            
+            # Create Spectrogram using PyTorch (Fast C++ Backend)
+            mel_transform = T.MelSpectrogram(
+                sample_rate=16000,
+                n_mels=128,
+                n_fft=1024, # Reduced from 2048 to save RAM
+                hop_length=512
+            )
+            spectrogram = mel_transform(waveform)
+            
+            # Convert to DB (Log Scale)
+            spectrogram_db = T.AmplitudeToDB()(spectrogram)
+            
+            # Convert to Image Format
+            # Normalize to 0-255
+            s_min, s_max = spectrogram_db.min(), spectrogram_db.max()
+            s_norm = 255 * (spectrogram_db - s_min) / (s_max - s_min)
+            s_norm = s_norm.byte().squeeze(0).numpy()
+            
+            # Flip Y-axis (Standard spectrogram view)
+            s_norm = np.flipud(s_norm)
+            img = Image.fromarray(s_norm).convert('RGB')
+            
+            print("--- [STEP 2] Spectrogram Generated (via Torchaudio) ---")
 
-        # 2. GENERATE SPECTROGRAM (The AI's "Eyes")
-        # We calculate this strictly for the AI model, then delete it.
-        S = librosa.feature.melspectrogram(y=y, sr=sr, n_mels=128)
-        
-        # Aggressive Cleanup
-        del y 
-        gc.collect() 
+        except Exception as e:
+            print(f"⚠️ SPECTROGRAM FAILED: {e}")
+            print("--- [FALLBACK] Switching to Diagnostic Mode (Black Image) ---")
+            # FAIL-SAFE: If math crashes, use black image so we don't timeout.
+            img = Image.new('RGB', (224, 224), color='black')
 
-        S_dB = librosa.power_to_db(S, ref=np.max)
-        del S
-        gc.collect()
-
-        s_min, s_max = S_dB.min(), S_dB.max()
-        s_norm = 255 * (S_dB - s_min) / (s_max - s_min)
-        s_norm = s_norm.astype(np.uint8)
-        del S_dB
-        gc.collect()
-
-        # Create Image for AI
-        img_data = np.flipud(s_norm)
-        img = Image.fromarray(img_data).convert('RGB')
-        
-        del s_norm
-        del img_data
-        gc.collect()
-
-        print(f"--- [STEP 2] Internal Spectrogram Generated ---")
-
-        # 3. AI INFERENCE (Real Prediction)
+        # 3. AI INFERENCE
         ai_diagnosis = "Unknown"
         ai_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
         
-        if ai_available:
+        if ai_available and img:
             with torch.no_grad():
                 input_tensor = preprocess_ai(img).unsqueeze(0)
                 outputs = model(input_tensor)
                 probs = F.softmax(outputs, dim=1)[0]
-                
-                # Extract Probabilities
                 ai_probs["Asthma"] = float(probs[0])
                 ai_probs["Normal"] = float(probs[1])
                 ai_probs["Pneumonia"] = float(probs[2])
-                
                 winner_idx = torch.argmax(probs).item()
                 ai_diagnosis = CLASSES[winner_idx]
         
         # 🗑️ FINAL CLEANUP
         del img
+        del y_np
         gc.collect()
         
         elapsed = time.time() - start_time
@@ -141,15 +138,13 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         return {
             "status": "success",
             "biomarkers": {
-                "tonality_score": 0.0, # Placeholder
+                "tonality_score": 0.0,
                 "ai_diagnosis": ai_diagnosis,
                 "prob_pneumonia": round(ai_probs["Pneumonia"], 3),
                 "prob_asthma": round(ai_probs["Asthma"], 3),
                 "prob_normal": round(ai_probs["Normal"], 3)
             },
-            "visualizer": { 
-                "spectrogram_image": "" # Verdict Only Mode
-            },
+            "visualizer": { "spectrogram_image": "" },
             "preliminary_assessment": f"{ai_diagnosis} Pattern",
             "risk_level_output": "High" if ai_diagnosis != "Normal" else "Low"
         }

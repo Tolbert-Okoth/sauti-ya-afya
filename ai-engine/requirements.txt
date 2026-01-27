@@ -23,3 +23,4 @@ groq
 torch
 torchaudio
 torchvision
+torchaudio
