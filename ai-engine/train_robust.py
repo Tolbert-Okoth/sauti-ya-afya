@@ -6,6 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import models, transforms
 import torchaudio
 import torchaudio.transforms as T
+import torchaudio.functional as F_audio
 from PIL import Image
 import numpy as np
 import random
@@ -15,12 +16,23 @@ import soundfile as sf
 DATA_DIR = '../raw_data_phase4' 
 CLASSES = ['asthma_wheeze', 'normal', 'pneumonia'] 
 IMG_SIZE = (224, 224)
-BATCH_SIZE = 8 # ⚠️ Reduced Batch Size to update weights more often
-EPOCHS = 25    # ⚠️ Increased Epochs to force learning
+BATCH_SIZE = 8 
+EPOCHS = 25    
 
 device = torch.device("cpu")
 
-# 2. PURE TORCH AUGMENTATION
+# 🛠️ HELPER: THE BANDPASS FILTER (Same as Analyzer)
+def apply_bandpass_filter(waveform, sr=16000):
+    try:
+        # High-pass > 100Hz 
+        filtered = F_audio.highpass_biquad(waveform, sr, cutoff_freq=100.0)
+        # Low-pass < 2000Hz 
+        filtered = F_audio.lowpass_biquad(filtered, sr, cutoff_freq=2000.0)
+        return filtered
+    except:
+        return waveform
+
+# 2. AUGMENTATION
 class AudioAugmentor:
     def __init__(self, sample_rate=16000):
         self.sample_rate = sample_rate
@@ -33,7 +45,7 @@ class AudioAugmentor:
 
         # B. Change Volume
         if random.random() < 0.5:
-            gain = random.uniform(0.7, 1.3) # Tighter range
+            gain = random.uniform(0.7, 1.3)
             waveform = waveform * gain
 
         return waveform
@@ -45,7 +57,7 @@ class RobustAudioDataset(Dataset):
         self.augment = augment
         self.samples = []
         self.augmentor = AudioAugmentor()
-        self.class_counts = [0] * len(CLASSES) # Track counts for weighting
+        self.class_counts = [0] * len(CLASSES) 
         
         print(f"🔍 Scanning directory: {os.path.abspath(root_dir)}")
 
@@ -80,6 +92,9 @@ class RobustAudioDataset(Dataset):
                 resampler = T.Resample(sr, 16000)
                 waveform = resampler(waveform)
             
+            # 🛡️ APPLY MEDICAL FILTER (New Step)
+            waveform = apply_bandpass_filter(waveform, sr=16000)
+
             target_len = 80000
             if waveform.shape[1] < target_len:
                 pad_amount = target_len - waveform.shape[1]
@@ -94,11 +109,12 @@ class RobustAudioDataset(Dataset):
             spectrogram = mel_transform(waveform)
             spectrogram_db = T.AmplitudeToDB(stype='power', top_db=80)(spectrogram)
             
-            s_min, s_max = spectrogram_db.min(), spectrogram_db.max()
-            s_norm = 255 * (spectrogram_db - s_min) / (s_max - s_min)
-            s_norm = s_norm.byte().squeeze(0).numpy()
+            # Fixed Normalization (Matching Analyzer)
+            s_norm = (spectrogram_db + 80) / 80.0
+            s_norm = torch.clamp(s_norm, 0, 1)
+            s_norm = s_norm.byte().squeeze(0).numpy() * 255
             s_norm = np.flipud(s_norm)
-            img = Image.fromarray(s_norm).convert('RGB')
+            img = Image.fromarray(s_norm.astype(np.uint8)).convert('RGB')
 
             if self.transform:
                 img = self.transform(img)
@@ -122,9 +138,7 @@ if len(full_dataset) == 0:
     print("❌ Error: No data found.")
     exit()
 
-# ⚖️ CALCULATE CLASS WEIGHTS (The Logic Fix)
-# Weights = Total / (Num_Classes * Count)
-# This makes rare classes (Asthma) heavier.
+# ⚖️ CALCULATE CLASS WEIGHTS
 total_samples = len(full_dataset)
 class_counts = full_dataset.class_counts
 class_weights = []
@@ -148,17 +162,16 @@ train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False)
 
 # Model Setup
-print("\n🧠 Initializing Weighted Brain...")
+print("\n🧠 Initializing Filtered Brain...")
 model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
 model.classifier[1] = nn.Linear(model.last_channel, len(CLASSES))
 model = model.to(device)
 
-# 🛠️ APPLY WEIGHTS TO LOSS FUNCTION
 criterion = nn.CrossEntropyLoss(weight=weights_tensor)
 optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
 # Training Loop
-print(f"🚀 Starting Weighted Training for {EPOCHS} Epochs...")
+print(f"🚀 Starting Filtered Training for {EPOCHS} Epochs...")
 for epoch in range(EPOCHS):
     model.train()
     running_loss = 0.0
@@ -181,6 +194,6 @@ for epoch in range(EPOCHS):
     acc = 100 * correct / total
     print(f"Epoch {epoch+1}/{EPOCHS} - Loss: {running_loss/len(train_loader):.4f} - Acc: {acc:.2f}%")
 
-print("💾 Saving Balanced Model...")
+print("💾 Saving Filtered Model...")
 torch.save(model.state_dict(), 'sauti_mobilenet_v2_robust.pth')
 print("✅ Done!")
