@@ -22,10 +22,14 @@ import time
 # 🛑 LIMIT TORCH THREADS
 torch.set_num_threads(1) 
 
-print("🔄 Loading Lite Brain...")
+print("🔄 Loading Robust Brain...")
 device = torch.device("cpu")
 model = models.mobilenet_v2(weights=None) 
+
+# 🛠️ IMPORTANT: Must match Training Class Order (Alphabetical)
+# 0: asthma_wheeze, 1: normal, 2: pneumonia
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
+
 # Map diagnosis to severity score for comparison
 SEVERITY_SCORE = {'Pneumonia': 3, 'Asthma': 2, 'Normal': 1, 'Unknown': 0}
 
@@ -33,7 +37,9 @@ model.classifier = torch.nn.Sequential(
     torch.nn.Dropout(0.2),
     torch.nn.Linear(model.last_channel, 3)
 )
-MODEL_PATH = 'sauti_mobilenet_v2_multiclass.pth'
+
+# ✅ NEW ROBUST MODEL
+MODEL_PATH = 'sauti_mobilenet_v2_robust.pth'
 ai_available = False
 
 try:
@@ -41,9 +47,12 @@ try:
         state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
+        # Quantize for speed
         model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
         ai_available = True
-        print("✅ AI Model Loaded (Quantized)")
+        print("✅ Robust AI Model Loaded")
+    else:
+        print(f"❌ Model not found at {MODEL_PATH}")
 except Exception as e:
     print(f"⚠️ AI Load Error: {e}")
 
@@ -75,14 +84,14 @@ def generate_spectrogram(y_chunk, sr=16000):
 def analyze_audio(file_path, sensitivity_threshold=0.75):
     try:
         start_time = time.time()
-        print(f"--- [START] Analysis Job (Smart Slicing 30s) ---")
+        print(f"--- [START] Analysis Job (Robust Engine) ---")
         
         # 1. EXTENDED RECORDING TIME (30 Seconds)
         command = [
             'ffmpeg', '-y', '-i', file_path,
             '-f', 's16le', '-acodec', 'pcm_s16le',
             '-ar', '16000', '-ac', '1',
-            '-t', '30', # 🕒 NOW 30 SECONDS
+            '-t', '30', 
             '-threads', '1',  
             '-preset', 'ultrafast',
             '-loglevel', 'error', '-'
@@ -96,27 +105,23 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         print(f"--- [STEP 1] Audio Decoded ({len(y_full)} samples) ---")
 
         # 2. SMART SLICING LOGIC
-        # We need 5-second chunks (16000 * 5 = 80000 samples)
-        CHUNK_SIZE = 80000
+        CHUNK_SIZE = 80000 # 5 seconds
         total_samples = len(y_full)
-        
-        # If recording is short (<5s), just take what we have (padded by model resizing)
-        # If recording is long, split it.
         chunks = []
+        
         if total_samples <= CHUNK_SIZE:
             chunks.append(y_full)
         else:
-            # Create overlapping chunks if possible, or just sequential
             for i in range(0, total_samples, CHUNK_SIZE):
                 chunk = y_full[i : i + CHUNK_SIZE]
-                if len(chunk) > 16000: # Only process if chunk is > 1 second
+                if len(chunk) > 16000: # Only process if > 1 second
                     chunks.append(chunk)
 
-        print(f"--- [STEP 2] Sliced into {len(chunks)} chunks for analysis ---")
+        print(f"--- [STEP 2] Sliced into {len(chunks)} chunks ---")
 
         # 3. MULTI-PASS INFERENCE
-        final_diagnosis = "Normal"
-        highest_severity = 0
+        final_diagnosis = "Inconclusive"
+        highest_severity = -1
         averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
 
         for idx, chunk in enumerate(chunks):
@@ -132,27 +137,36 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                     p_normal = float(probs[1])
                     p_pneumonia = float(probs[2])
                     
-                    # Determine winner for this chunk
                     winner_idx = torch.argmax(probs).item()
                     chunk_diagnosis = CLASSES[winner_idx]
-                    chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
+                    winner_prob = float(probs[winner_idx])
+                    
+                    # SAFETY CHECK: Ignore low confidence guesses
+                    if winner_prob < 0.50:
+                        chunk_diagnosis = "Inconclusive"
+                        chunk_severity = 0
+                    else:
+                        chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
 
-                    print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Pn: {p_pneumonia:.2f})")
+                    print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f})")
 
-                    #LOGIC: Taking the HIGHEST RISK chunk
+                    # Logic: Take the HIGHEST SEVERITY chunk found
                     if chunk_severity > highest_severity:
                         highest_severity = chunk_severity
                         final_diagnosis = chunk_diagnosis
-                        # Save the probabilities of the "Worst Case" chunk
                         averaged_probs = {
                             "Asthma": p_asthma, 
                             "Normal": p_normal, 
                             "Pneumonia": p_pneumonia
                         }
             
-            # Cleanup per chunk to save RAM
             del img
             gc.collect()
+        
+        # Fallback if everything was inconclusive
+        if final_diagnosis == "Inconclusive":
+             # Default to Normal if nothing bad was found, but mark probabilities low
+             final_diagnosis = "Normal" 
 
         elapsed = time.time() - start_time
         print(f"--- [SUCCESS] Final Verdict: {final_diagnosis} ({elapsed:.2f}s) ---")
