@@ -10,7 +10,7 @@ warnings.filterwarnings("ignore")
 
 import numpy as np
 import torch
-import torchaudio # 🚀 FAST ENGINE
+import torchaudio 
 import torchaudio.transforms as T
 from torchvision import transforms, models
 from PIL import Image
@@ -26,8 +26,7 @@ print("🔄 Loading Robust Brain...")
 device = torch.device("cpu")
 model = models.mobilenet_v2(weights=None) 
 
-# 🛠️ IMPORTANT: Must match Training Class Order (Alphabetical)
-# 0: asthma_wheeze, 1: normal, 2: pneumonia
+# 🛠️ CLASS ORDER
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
 
 # Map diagnosis to severity score for comparison
@@ -38,7 +37,6 @@ model.classifier = torch.nn.Sequential(
     torch.nn.Linear(model.last_channel, 3)
 )
 
-# ✅ NEW ROBUST MODEL
 MODEL_PATH = 'sauti_mobilenet_v2_robust.pth'
 ai_available = False
 
@@ -47,7 +45,6 @@ try:
         state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
-        # Quantize for speed
         model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
         ai_available = True
         print("✅ Robust AI Model Loaded")
@@ -62,22 +59,31 @@ preprocess_ai = transforms.Compose([
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 ])
 
+def calculate_rms(chunk):
+    """Calculate Root Mean Square (Energy/Volume) of the audio chunk"""
+    return np.sqrt(np.mean(chunk**2))
+
 def generate_spectrogram(y_chunk, sr=16000):
-    """Helper function to generate spectrogram for a single chunk"""
     try:
         waveform = torch.from_numpy(y_chunk).unsqueeze(0)
-        # Tuned to match Librosa
+        
+        # 🛠️ FIXED: Standardized Spectrogram Settings
         mel_transform = T.MelSpectrogram(
             sample_rate=sr, n_mels=128, n_fft=2048, hop_length=512, power=2.0
         )
         spectrogram = mel_transform(waveform)
         spectrogram_db = T.AmplitudeToDB(stype='power', top_db=80)(spectrogram)
         
-        s_min, s_max = spectrogram_db.min(), spectrogram_db.max()
-        s_norm = 255 * (spectrogram_db - s_min) / (s_max - s_min)
-        s_norm = s_norm.byte().squeeze(0).numpy()
+        # 🛠️ CRITICAL FIX: FIXED NORMALIZATION
+        # Instead of stretching min/max dynamically, we clamp to a standard range.
+        # This prevents "Silence" from looking like "Static/Pneumonia".
+        s_norm = (spectrogram_db + 80) / 80.0  # Map -80dB..0dB to 0..1
+        s_norm = torch.clamp(s_norm, 0, 1)     # Clip anything outside
+        s_norm = s_norm.byte().squeeze(0).numpy() * 255 # Convert to 0-255
+        
+        # Flip Y-axis (Low freq at bottom)
         s_norm = np.flipud(s_norm)
-        return Image.fromarray(s_norm).convert('RGB')
+        return Image.fromarray(s_norm.astype(np.uint8)).convert('RGB')
     except:
         return None
 
@@ -86,7 +92,7 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         start_time = time.time()
         print(f"--- [START] Analysis Job (Robust Engine) ---")
         
-        # 1. EXTENDED RECORDING TIME (30 Seconds)
+        # 1. DECODE AUDIO
         command = [
             'ffmpeg', '-y', '-i', file_path,
             '-f', 's16le', '-acodec', 'pcm_s16le',
@@ -102,29 +108,30 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
         if process.returncode != 0: raise Exception(f"FFmpeg Error: {err.decode()}")
 
         y_full = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
-        print(f"--- [STEP 1] Audio Decoded ({len(y_full)} samples) ---")
-
-        # 2. SMART SLICING LOGIC
-        CHUNK_SIZE = 80000 # 5 seconds
-        total_samples = len(y_full)
-        chunks = []
         
-        if total_samples <= CHUNK_SIZE:
-            chunks.append(y_full)
-        else:
-            for i in range(0, total_samples, CHUNK_SIZE):
-                chunk = y_full[i : i + CHUNK_SIZE]
-                if len(chunk) > 16000: # Only process if > 1 second
-                    chunks.append(chunk)
+        # 2. SMART SLICING
+        CHUNK_SIZE = 80000 # 5 seconds
+        chunks = []
+        for i in range(0, len(y_full), CHUNK_SIZE):
+            chunk = y_full[i : i + CHUNK_SIZE]
+            if len(chunk) > 16000: # Only process if > 1 second
+                chunks.append(chunk)
 
         print(f"--- [STEP 2] Sliced into {len(chunks)} chunks ---")
 
-        # 3. MULTI-PASS INFERENCE
+        # 3. INFERENCE LOOP
         final_diagnosis = "Inconclusive"
         highest_severity = -1
+        valid_chunks = 0
         averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
 
         for idx, chunk in enumerate(chunks):
+            # 🛠️ CHECK ENERGY: Skip if too quiet (RMS < 0.005)
+            rms = calculate_rms(chunk)
+            if rms < 0.005: 
+                print(f"   🔸 Chunk {idx+1}: Skipped (Too Silent - RMS: {rms:.4f})")
+                continue
+
             img = generate_spectrogram(chunk)
             
             if ai_available and img:
@@ -133,43 +140,44 @@ def analyze_audio(file_path, sensitivity_threshold=0.75):
                     outputs = model(input_tensor)
                     probs = F.softmax(outputs, dim=1)[0]
                     
-                    p_asthma = float(probs[0])
-                    p_normal = float(probs[1])
-                    p_pneumonia = float(probs[2])
-                    
                     winner_idx = torch.argmax(probs).item()
-                    chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
+                    chunk_diagnosis = CLASSES[winner_idx]
                     
-                    # SAFETY CHECK: Ignore low confidence guesses
-                    if winner_prob < 0.50:
-                        chunk_diagnosis = "Inconclusive"
-                        chunk_severity = 0
-                    else:
-                        chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
-
+                    # Store probabilities if this is the "worst" chunk so far
+                    chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
+                    
                     print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f})")
+                    valid_chunks += 1
 
-                    # Logic: Take the HIGHEST SEVERITY chunk found
+                    # Logic: Prioritize Disease Detection
                     if chunk_severity > highest_severity:
                         highest_severity = chunk_severity
                         final_diagnosis = chunk_diagnosis
                         averaged_probs = {
-                            "Asthma": p_asthma, 
-                            "Normal": p_normal, 
-                            "Pneumonia": p_pneumonia
+                            "Asthma": float(probs[0]), 
+                            "Normal": float(probs[1]), 
+                            "Pneumonia": float(probs[2])
+                        }
+                    # Tie-breaker: If severity is same, take higher confidence
+                    elif chunk_severity == highest_severity and winner_prob > averaged_probs[chunk_diagnosis]:
+                        averaged_probs = {
+                            "Asthma": float(probs[0]), 
+                            "Normal": float(probs[1]), 
+                            "Pneumonia": float(probs[2])
                         }
             
             del img
             gc.collect()
         
-        # Fallback if everything was inconclusive
-        if final_diagnosis == "Inconclusive":
-             # Default to Normal if nothing bad was found, but mark probabilities low
-             final_diagnosis = "Normal" 
+        # 4. FINAL VERDICT LOGIC
+        if valid_chunks == 0:
+            final_diagnosis = "Inconclusive" # Audio was pure silence
+        elif final_diagnosis == "Inconclusive":
+             final_diagnosis = "Normal" # Default to normal if audio exists but no disease found
 
         elapsed = time.time() - start_time
-        print(f"--- [SUCCESS] Final Verdict: {final_diagnosis} ({elapsed:.2f}s) ---")
+        print(f"--- [SUCCESS] Verdict: {final_diagnosis} ({elapsed:.2f}s) ---")
 
         return {
             "status": "success",
