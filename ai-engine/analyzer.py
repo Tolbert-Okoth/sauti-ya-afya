@@ -296,6 +296,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 "prob_asthma": round(averaged_probs["Asthma"], 3),
                 "prob_normal": round(averaged_probs["Normal"], 3)
             },
+            # 🔧 RESTORED KEYS (Fixes Frontend Crash)
+            "visualizer": { "spectrogram_image": "" },
+            "preliminary_assessment": f"{final_diagnosis} Pattern",
             "risk_level_output": risk_label
         }
 
