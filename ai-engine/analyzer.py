@@ -178,8 +178,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
         # 2. Analyze Chunks
         for idx, chunk in enumerate(chunks):
-            # A. Silence Check
-            if calculate_rms(chunk) < 0.005: continue 
+            # A. Silence Check (Global)
+            rms = calculate_rms(chunk)
+            if rms < 0.005: continue 
 
             # B. Generate AI Inputs
             img = generate_spectrogram(chunk)
@@ -189,7 +190,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 probs = predict_with_tta(model, input_tensor)
                 
                 # Unpack raw AI probabilities
-                # CLASSES = ['Asthma', 'Normal', 'Pneumonia']
                 p_asthma = float(probs[0])
                 p_normal = float(probs[1])
                 p_pneumonia = float(probs[2])
@@ -202,7 +202,8 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 # ---------------------------------------------------------
                 
                 # RULE 1: CRACKLE CHECK (The "Pneumonia" Trump Card)
-                if zcr > 0.15:
+                # Raised to 0.18 for safety against static
+                if zcr > 0.18 and rms > 0.01:
                     winner_idx = 2 # Pneumonia
                     winner_prob = 0.95 
                     chunk_diagnosis = "Pneumonia"
@@ -210,12 +211,12 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     averaged_probs = {"Asthma": 0.05, "Normal": 0.05, "Pneumonia": 0.90}
 
                 # RULE 2: WHEEZE CHECK (The "Asthma" Test)
-                # Harmonic Ratio (inverted flatness) > 0.5 means very tonal
-                elif harmonic_ratio > 0.5:
+                # FIX APPLIED: RMS > 0.02 (Must be LOUD) and Harm > 0.75 (Must be VERY Tonal)
+                elif harmonic_ratio > 0.75 and rms > 0.02:
                     winner_idx = 0 # Asthma
                     winner_prob = 0.95 
                     chunk_diagnosis = "Asthma"
-                    print(f"   ⚠️ HIERARCHY: Pure Wheeze (Harmonic={harmonic_ratio:.2f}) -> Forcing Asthma.")
+                    print(f"   ⚠️ HIERARCHY: Loud Pure Wheeze (Harm={harmonic_ratio:.2f}, Vol={rms:.3f}) -> Forcing Asthma.")
                     averaged_probs = {"Asthma": 0.90, "Normal": 0.05, "Pneumonia": 0.05}
 
                 # RULE 3: DEFAULT TO AI
@@ -246,7 +247,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
                     final_diagnosis = chunk_diagnosis
-                    if zcr <= 0.15 and harmonic_ratio <= 0.5: # Don't overwrite if physics forced it
+                    if zcr <= 0.18 and harmonic_ratio <= 0.75: # Don't overwrite if physics forced it
                          averaged_probs = {"Asthma": p_asthma, "Normal": p_normal, "Pneumonia": p_pneumonia}
         
         if valid_chunks == 0: final_diagnosis = "Inconclusive"
