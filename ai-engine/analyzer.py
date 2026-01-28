@@ -20,7 +20,6 @@ import gc
 import subprocess 
 import time
 import random
-# ❌ REMOVED: import librosa (Too heavy)
 
 # 🛑 LIMIT TORCH THREADS
 torch.set_num_threads(1) 
@@ -31,6 +30,7 @@ model = models.mobilenet_v2(weights=None)
 
 # 🛠️ CLASS ORDER
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
+# FIX: Normal is always 1
 SEVERITY_SCORE = {'Pneumonia': 3, 'Asthma': 2, 'Normal': 1, 'Unknown': 0}
 
 # 🏥 HYBRID SYMPTOM WEIGHTS
@@ -52,7 +52,6 @@ try:
         state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
-        # Quantize for speed/memory on CPU
         model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
         ai_available = True
         print("✅ Filtered AI Model Loaded")
@@ -68,11 +67,9 @@ preprocess_ai = transforms.Compose([
 ])
 
 def calculate_rms(chunk):
-    """Measure volume to detect silence"""
     return np.sqrt(np.mean(chunk**2))
 
 def apply_bandpass_filter(waveform, sr=16000):
-    """Medical Filter: 100Hz (Heartbeat) to 2000Hz (Hiss)"""
     try:
         filtered = F_audio.highpass_biquad(waveform, sr, cutoff_freq=100.0)
         filtered = F_audio.lowpass_biquad(filtered, sr, cutoff_freq=2000.0)
@@ -81,38 +78,19 @@ def apply_bandpass_filter(waveform, sr=16000):
         return waveform
 
 def extract_physics_features_lite(y_chunk, sr=16000):
-    """
-    LIGHTWEIGHT PHYSICS EXTRACTION (No Librosa)
-    Uses pure Numpy FFT to detect Wheezes vs Crackles.
-    """
     try:
-        # 1. ZCR (Zero Crossing Rate) - Crackle Detector
-        # Count how many times signal crosses 0 axis
         zero_crossings = np.nonzero(np.diff(y_chunk > 0))[0]
         zcr = len(zero_crossings) / len(y_chunk)
         
-        # 2. Harmonicity (Spectral Flatness) - Wheeze Detector
-        # Wheeze = Tone (Spiky Spectrum). Crackle = Noise (Flat Spectrum).
-        # We calculate "Spectral Flatness" and invert it.
-        
-        # Fast Fourier Transform
-        spectrum = np.abs(np.fft.rfft(y_chunk))
-        spectrum = spectrum + 1e-10 # Avoid divide by zero
-        
-        # Geometric Mean / Arithmetic Mean (Wiener Entropy)
+        spectrum = np.abs(np.fft.rfft(y_chunk)) + 1e-10
         log_spectrum = np.log(spectrum)
         geom_mean = np.exp(np.mean(log_spectrum))
         arith_mean = np.mean(spectrum)
-        
         spectral_flatness = geom_mean / arith_mean
-        
-        # High Flatness (1.0) = Noise. Low Flatness (0.0) = Tone.
-        # We want Harmonic Ratio: 1.0 = Pure Tone (Wheeze).
         harmonic_ratio = 1.0 - spectral_flatness
         
         return zcr, harmonic_ratio
-    except Exception as e:
-        print(f"Physics Error: {e}")
+    except:
         return 0.0, 0.0
 
 def generate_spectrogram(y_chunk, sr=16000):
@@ -131,16 +109,9 @@ def generate_spectrogram(y_chunk, sr=16000):
         return None
 
 def predict_with_tta(model, input_tensor):
-    """Test Time Augmentation: Average 3 predictions for stability"""
     t1 = input_tensor
-    t2 = input_tensor.clone()
-    f_start = random.randint(0, 100)
-    t2[:, :, f_start:f_start+10, :] = 0 
-    
-    t3 = input_tensor.clone()
-    t_start = random.randint(0, 100)
-    t3[:, :, :, t_start:t_start+10] = 0  
-    
+    t2 = input_tensor.clone(); f = random.randint(0, 100); t2[:,:,f:f+10,:] = 0
+    t3 = input_tensor.clone(); t = random.randint(0, 100); t3[:,:,:,t:t+10] = 0
     batch = torch.cat([t1, t2, t3], dim=0)
     with torch.no_grad():
         outputs = model(batch)
@@ -153,22 +124,15 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         start_time = time.time()
         print(f"--- [START] Analysis Job (Lite Mode: No Librosa) ---")
         
-        # 1. Load Audio with FFmpeg (Very Light)
-        command = [
-            'ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le',
-            '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', 
-            '-preset', 'ultrafast', '-loglevel', 'error', '-'
-        ]
+        command = ['ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', '-preset', 'ultrafast', '-loglevel', 'error', '-']
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = process.communicate()
         if process.returncode != 0: raise Exception(f"FFmpeg Error: {err.decode()}")
 
         y_full = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
-        
         chunks = []
-        CHUNK_SIZE = 80000 # 5 seconds
-        for i in range(0, len(y_full), CHUNK_SIZE):
-            chunk = y_full[i : i + CHUNK_SIZE]
+        for i in range(0, len(y_full), 80000):
+            chunk = y_full[i : i + 80000]
             if len(chunk) > 16000: chunks.append(chunk)
 
         final_diagnosis = "Inconclusive"
@@ -176,80 +140,55 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         valid_chunks = 0
         averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
 
-        # 2. Analyze Chunks
         for idx, chunk in enumerate(chunks):
-            # A. Silence Check (Global)
             rms = calculate_rms(chunk)
             if rms < 0.005: continue 
 
-            # B. Generate AI Inputs
             img = generate_spectrogram(chunk)
-            
             if ai_available and img:
                 input_tensor = preprocess_ai(img).unsqueeze(0)
                 probs = predict_with_tta(model, input_tensor)
                 
-                # Unpack raw AI probabilities
-                p_asthma = float(probs[0])
-                p_normal = float(probs[1])
-                p_pneumonia = float(probs[2])
-
-                # C. CALCULATE PHYSICS FEATURES (LITE MODE)
+                p_asthma, p_normal, p_pneumonia = float(probs[0]), float(probs[1]), float(probs[2])
                 zcr, harmonic_ratio = extract_physics_features_lite(chunk)
 
-                # ---------------------------------------------------------
-                # 🛡️ THE MEDICAL HIERARCHY (PHYSICS VETO LOGIC)
-                # ---------------------------------------------------------
-                
-                # RULE 1: CRACKLE CHECK (The "Pneumonia" Trump Card)
-                # RELAXED: Only Force Pneumonia if ZCR is EXTREME (> 0.40)
-                # For 0.15 - 0.40 range, we trust the AI (which correctly identifies Normal)
-                if zcr > 0.40 and rms > 0.02:
-                    winner_idx = 2 # Pneumonia
-                    winner_prob = 0.95 
-                    chunk_diagnosis = "Pneumonia"
+                # 🛡️ PHYSICS VETO LOGIC (RELAXED)
+                # 1. Pneumonia Check: Keep Extreme Veto (Crackles are hard for AI)
+                if zcr > 0.40 and rms > 0.02: 
+                    winner_idx = 2; winner_prob = 0.95; chunk_diagnosis = "Pneumonia"
                     print(f"   ⚠️ HIERARCHY: Extreme Crackles (ZCR={zcr:.2f}) -> Forcing Pneumonia.")
                     averaged_probs = {"Asthma": 0.05, "Normal": 0.05, "Pneumonia": 0.90}
-
-                # RULE 2: WHEEZE CHECK (The "Asthma" Test)
-                # RELAXED: Only Force Asthma if Harmonics are PURE (> 0.80)
-                elif harmonic_ratio > 0.80 and rms > 0.02:
-                    winner_idx = 0 # Asthma
-                    winner_prob = 0.95 
-                    chunk_diagnosis = "Asthma"
-                    print(f"   ⚠️ HIERARCHY: Loud Pure Wheeze (Harm={harmonic_ratio:.2f}, Vol={rms:.3f}) -> Forcing Asthma.")
-                    averaged_probs = {"Asthma": 0.90, "Normal": 0.05, "Pneumonia": 0.05}
-
-                # RULE 3: DEFAULT TO AI (Trust the 95% Model)
+                
+                # 2. Asthma Check: REMOVED. 
+                # Trust the AI. Harmonics > 0.85 can be a beep or voice.
+                # AI knows the difference.
+                
+                # 3. Standard AI Prediction
                 else:
                     winner_idx = torch.argmax(probs).item()
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
-
-                    if winner_prob < 0.40:
-                        chunk_diagnosis = "Normal"
-                        chunk_severity = 1
-                    elif winner_prob < 0.60:
-                        chunk_diagnosis = "Normal"
-                        chunk_severity = 1.5 
                     
-                # ---------------------------------------------------------
+                    # FIX: Normal is ALWAYS Low Risk (Severity 1)
+                    if chunk_diagnosis == "Normal":
+                        chunk_severity = 1 
+                    elif winner_prob < 0.60:
+                        # Only upgrade to "Suspected" if it's NOT Normal but confidence is low
+                        chunk_diagnosis = f"Suspected {chunk_diagnosis}" 
+                        chunk_severity = 1.5 
+                    else:
+                        chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
 
-                # Assign Severity
-                if chunk_diagnosis == "Normal" and winner_prob < 0.60:
-                     chunk_severity = 1.5 if winner_prob > 0.4 else 1
-                else:
-                     chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
+                # Sanity Check for Severity assignment
+                if chunk_diagnosis == "Normal": chunk_severity = 1
                 
-                print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity} | ZCR: {zcr:.2f} | Harm: {harmonic_ratio:.2f})")
+                print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity})")
                 valid_chunks += 1
 
-                # Update Global Diagnosis
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
                     final_diagnosis = chunk_diagnosis
-                    # Only overwrite probabilities if it was a Physics Force
-                    if zcr > 0.40 or harmonic_ratio > 0.80:
+                    if zcr > 0.40: # Only overwrite if Physics Forced it
                          averaged_probs = {"Asthma": p_asthma, "Normal": p_normal, "Pneumonia": p_pneumonia}
                     else:
                          averaged_probs = {"Asthma": float(probs[0]), "Normal": float(probs[1]), "Pneumonia": float(probs[2])}
@@ -257,39 +196,26 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         if valid_chunks == 0: final_diagnosis = "Inconclusive"
         elif final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
 
-        # 🏥 SYMPTOM CHECK
         if symptoms:
-            symptoms_lower = symptoms.lower()
-            risk_bonus = 0.0
-            for key, bonus in SYMPTOM_RISK_BONUS.items():
-                if key in symptoms_lower: risk_bonus += bonus
-            
+            risk_bonus = sum([bonus for key, bonus in SYMPTOM_RISK_BONUS.items() if key in symptoms.lower()])
             if risk_bonus > 0:
                 print(f"   ⚠️ Symptoms Bonus: +{risk_bonus:.2f}")
                 averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + risk_bonus)
                 averaged_probs["Asthma"] = min(0.99, averaged_probs["Asthma"] + (risk_bonus * 0.8))
-                
                 new_winner = max(averaged_probs, key=averaged_probs.get)
-                new_prob = averaged_probs[new_winner]
                 
-                if new_prob > 0.60:
+                if averaged_probs[new_winner] > 0.60:
                      highest_severity = max(highest_severity, SEVERITY_SCORE.get(new_winner, 0))
                 
-                if SEVERITY_SCORE.get(new_winner, 0) >= SEVERITY_SCORE.get(final_diagnosis, 0):
+                if SEVERITY_SCORE.get(new_winner, 0) >= SEVERITY_SCORE.get(final_diagnosis.replace("Suspected ", ""), 0): 
                     final_diagnosis = new_winner
 
-        # 🎯 FINAL VERDICT
+        # FINAL RISK CALCULATION
         risk_label = "Low"
-        if highest_severity == 1.5 and final_diagnosis == "Normal":
-             final_diagnosis = "Suspected Respiratory Issue"
-             risk_label = "Medium"
-        elif final_diagnosis == "Normal":
-            risk_label = "Low"
-        elif highest_severity == 1.5:
-            final_diagnosis = f"Suspected {final_diagnosis}"
-            risk_label = "Medium"
-        else:
-            risk_label = "High"
+        if "Suspected" in final_diagnosis: risk_label = "Medium"
+        elif final_diagnosis == "Normal": risk_label = "Low"
+        elif final_diagnosis == "Inconclusive": risk_label = "Low"
+        else: risk_label = "High"
 
         print(f"--- [SUCCESS] Verdict: {final_diagnosis} (Risk: {risk_label}) ---")
         return {
@@ -300,7 +226,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 "prob_asthma": round(averaged_probs["Asthma"], 3),
                 "prob_normal": round(averaged_probs["Normal"], 3)
             },
-            # 🔧 RESTORED KEYS (Fixes Frontend Crash)
             "visualizer": { "spectrogram_image": "" },
             "preliminary_assessment": f"{final_diagnosis} Pattern",
             "risk_level_output": risk_label
