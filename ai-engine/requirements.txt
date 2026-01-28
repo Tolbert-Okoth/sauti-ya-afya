@@ -11,7 +11,7 @@ gunicorn
 
 # Audio & Math
 numpy
-librosa
+
 soundfile
 matplotlib
 Pillow

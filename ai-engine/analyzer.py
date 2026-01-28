@@ -1,6 +1,6 @@
 import os
 
-# 🚀 FORCE SINGLE THREADING (Crucial for Free Tier Servers)
+# 🚀 FORCE SINGLE THREADING (Crucial for Free Tier)
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -20,16 +20,16 @@ import gc
 import subprocess 
 import time
 import random
-import librosa # 📚 Added for Physics Math (ZCR/Harmonics)
+# ❌ REMOVED: import librosa (Too heavy)
 
 # 🛑 LIMIT TORCH THREADS
 torch.set_num_threads(1) 
 
-print("🔄 Loading Filtered Medical Brain...")
+print("🔄 Loading Lite Medical Brain...")
 device = torch.device("cpu")
 model = models.mobilenet_v2(weights=None) 
 
-# 🛠️ CLASS ORDER (Must match training folder order)
+# 🛠️ CLASS ORDER
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
 SEVERITY_SCORE = {'Pneumonia': 3, 'Asthma': 2, 'Normal': 1, 'Unknown': 0}
 
@@ -80,25 +80,39 @@ def apply_bandpass_filter(waveform, sr=16000):
     except:
         return waveform
 
-def extract_physics_features(y_chunk, sr=16000):
+def extract_physics_features_lite(y_chunk, sr=16000):
     """
-    Extracts the 'Truth' features:
-    - ZCR (Zero Crossing Rate) -> Detects Crackles (Pneumonia)
-    - Harmonic Ratio -> Detects Whistling (Asthma)
+    LIGHTWEIGHT PHYSICS EXTRACTION (No Librosa)
+    Uses pure Numpy FFT to detect Wheezes vs Crackles.
     """
     try:
-        # ZCR (Spikiness/Crackles)
-        zcr = np.mean(librosa.feature.zero_crossing_rate(y_chunk))
+        # 1. ZCR (Zero Crossing Rate) - Crackle Detector
+        # Count how many times signal crosses 0 axis
+        zero_crossings = np.nonzero(np.diff(y_chunk > 0))[0]
+        zcr = len(zero_crossings) / len(y_chunk)
         
-        # Harmonic Ratio (Musicality/Wheeze)
-        # Use simple HPSS decomposition
-        y_harm, y_perc = librosa.effects.hpss(y_chunk)
-        harmonic_energy = np.sum(np.abs(y_harm))
-        percussive_energy = np.sum(np.abs(y_perc))
-        harmonic_ratio = harmonic_energy / (harmonic_energy + percussive_energy + 1e-6)
+        # 2. Harmonicity (Spectral Flatness) - Wheeze Detector
+        # Wheeze = Tone (Spiky Spectrum). Crackle = Noise (Flat Spectrum).
+        # We calculate "Spectral Flatness" and invert it.
+        
+        # Fast Fourier Transform
+        spectrum = np.abs(np.fft.rfft(y_chunk))
+        spectrum = spectrum + 1e-10 # Avoid divide by zero
+        
+        # Geometric Mean / Arithmetic Mean (Wiener Entropy)
+        log_spectrum = np.log(spectrum)
+        geom_mean = np.exp(np.mean(log_spectrum))
+        arith_mean = np.mean(spectrum)
+        
+        spectral_flatness = geom_mean / arith_mean
+        
+        # High Flatness (1.0) = Noise. Low Flatness (0.0) = Tone.
+        # We want Harmonic Ratio: 1.0 = Pure Tone (Wheeze).
+        harmonic_ratio = 1.0 - spectral_flatness
         
         return zcr, harmonic_ratio
-    except:
+    except Exception as e:
+        print(f"Physics Error: {e}")
         return 0.0, 0.0
 
 def generate_spectrogram(y_chunk, sr=16000):
@@ -137,9 +151,9 @@ def predict_with_tta(model, input_tensor):
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
     try:
         start_time = time.time()
-        print(f"--- [START] Analysis Job (Filtered + TTA + Physics Veto) ---")
+        print(f"--- [START] Analysis Job (Lite Mode: No Librosa) ---")
         
-        # 1. Load Audio with FFmpeg
+        # 1. Load Audio with FFmpeg (Very Light)
         command = [
             'ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le',
             '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', 
@@ -180,49 +194,46 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 p_normal = float(probs[1])
                 p_pneumonia = float(probs[2])
 
-                # C. CALCULATE PHYSICS FEATURES (The Truth)
-                zcr, harmonic_ratio = extract_physics_features(chunk)
+                # C. CALCULATE PHYSICS FEATURES (LITE MODE)
+                zcr, harmonic_ratio = extract_physics_features_lite(chunk)
 
                 # ---------------------------------------------------------
                 # 🛡️ THE MEDICAL HIERARCHY (PHYSICS VETO LOGIC)
                 # ---------------------------------------------------------
                 
                 # RULE 1: CRACKLE CHECK (The "Pneumonia" Trump Card)
-                # If ZCR is high (> 0.15), it is Pneumonia. Period.
-                # Crackles override wheezes.
                 if zcr > 0.15:
                     winner_idx = 2 # Pneumonia
-                    winner_prob = 0.95 # Force High Confidence
+                    winner_prob = 0.95 
                     chunk_diagnosis = "Pneumonia"
                     print(f"   ⚠️ HIERARCHY: High Crackles (ZCR={zcr:.2f}) -> Forcing Pneumonia.")
+                    averaged_probs = {"Asthma": 0.05, "Normal": 0.05, "Pneumonia": 0.90}
 
                 # RULE 2: WHEEZE CHECK (The "Asthma" Test)
-                # Only if NO crackles. If Harmonic Ratio is high (> 0.25), it is Asthma.
-                elif harmonic_ratio > 0.25:
+                # Harmonic Ratio (inverted flatness) > 0.5 means very tonal
+                elif harmonic_ratio > 0.5:
                     winner_idx = 0 # Asthma
-                    winner_prob = 0.95 # Force High Confidence
+                    winner_prob = 0.95 
                     chunk_diagnosis = "Asthma"
                     print(f"   ⚠️ HIERARCHY: Pure Wheeze (Harmonic={harmonic_ratio:.2f}) -> Forcing Asthma.")
+                    averaged_probs = {"Asthma": 0.90, "Normal": 0.05, "Pneumonia": 0.05}
 
-                # RULE 3: DEFAULT TO AI (With Warning Zones)
-                # If physics are subtle, trust the Trained AI.
+                # RULE 3: DEFAULT TO AI
                 else:
                     winner_idx = torch.argmax(probs).item()
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
 
-                    # Apply Warning Zone (Only if Physics didn't override)
                     if winner_prob < 0.40:
                         chunk_diagnosis = "Normal"
                         chunk_severity = 1
                     elif winner_prob < 0.60:
-                        chunk_diagnosis = "Normal" # Default to Normal but flag as "Suspected" in severity logic
+                        chunk_diagnosis = "Normal"
                         chunk_severity = 1.5 
-                        # We allow "Suspected" logic to be handled by severity score below
                     
                 # ---------------------------------------------------------
 
-                # Assign Severity based on final decision
+                # Assign Severity
                 if chunk_diagnosis == "Normal" and winner_prob < 0.60:
                      chunk_severity = 1.5 if winner_prob > 0.4 else 1
                 else:
@@ -231,18 +242,12 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity} | ZCR: {zcr:.2f} | Harm: {harmonic_ratio:.2f})")
                 valid_chunks += 1
 
-                # Update Global Diagnosis if this chunk is more severe
+                # Update Global Diagnosis
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
                     final_diagnosis = chunk_diagnosis
-                    # Store probabilities for final output
-                    averaged_probs = {"Asthma": p_asthma, "Normal": p_normal, "Pneumonia": p_pneumonia}
-                    
-                    # If we forced a diagnosis via Physics, update stats to match
-                    if chunk_diagnosis == "Pneumonia" and zcr > 0.15:
-                         averaged_probs = {"Asthma": 0.05, "Normal": 0.05, "Pneumonia": 0.90}
-                    elif chunk_diagnosis == "Asthma" and harmonic_ratio > 0.25:
-                         averaged_probs = {"Asthma": 0.90, "Normal": 0.05, "Pneumonia": 0.05}
+                    if zcr <= 0.15 and harmonic_ratio <= 0.5: # Don't overwrite if physics forced it
+                         averaged_probs = {"Asthma": p_asthma, "Normal": p_normal, "Pneumonia": p_pneumonia}
         
         if valid_chunks == 0: final_diagnosis = "Inconclusive"
         elif final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
@@ -259,21 +264,17 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + risk_bonus)
                 averaged_probs["Asthma"] = min(0.99, averaged_probs["Asthma"] + (risk_bonus * 0.8))
                 
-                # Re-Evaluate Winner after symptoms
                 new_winner = max(averaged_probs, key=averaged_probs.get)
                 new_prob = averaged_probs[new_winner]
                 
-                # If symptoms pushed confidence > 60%, upgrade severity
                 if new_prob > 0.60:
                      highest_severity = max(highest_severity, SEVERITY_SCORE.get(new_winner, 0))
                 
                 if SEVERITY_SCORE.get(new_winner, 0) >= SEVERITY_SCORE.get(final_diagnosis, 0):
                     final_diagnosis = new_winner
 
-        # 🎯 FINAL VERDICT FORMATTING
+        # 🎯 FINAL VERDICT
         risk_label = "Low"
-        
-        # Handle "Suspected" Logic
         if highest_severity == 1.5 and final_diagnosis == "Normal":
              final_diagnosis = "Suspected Respiratory Issue"
              risk_label = "Medium"
@@ -289,14 +290,11 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         return {
             "status": "success",
             "biomarkers": {
-                "tonality_score": 0.0,
                 "ai_diagnosis": final_diagnosis,
                 "prob_pneumonia": round(averaged_probs["Pneumonia"], 3),
                 "prob_asthma": round(averaged_probs["Asthma"], 3),
                 "prob_normal": round(averaged_probs["Normal"], 3)
             },
-            "visualizer": { "spectrogram_image": "" },
-            "preliminary_assessment": f"{final_diagnosis} Pattern",
             "risk_level_output": risk_label
         }
 
