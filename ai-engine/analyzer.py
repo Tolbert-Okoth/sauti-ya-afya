@@ -1,4 +1,5 @@
 import os
+import re  # Added for better symptom parsing
 
 # 🚀 FORCE SINGLE THREADING (Crucial for Free Tier)
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -20,6 +21,7 @@ import gc
 import subprocess 
 import time
 import random
+from scipy.stats import kurtosis, entropy  # Added for expanded physics features
 
 # 🛑 LIMIT TORCH THREADS
 torch.set_num_threads(1) 
@@ -33,10 +35,11 @@ CLASSES = ['Asthma', 'Normal', 'Pneumonia']
 # FIX: Normal is always 1
 SEVERITY_SCORE = {'Pneumonia': 3, 'Asthma': 2, 'Normal': 1, 'Unknown': 0}
 
-# 🏥 HYBRID SYMPTOM WEIGHTS
+# 🏥 HYBRID SYMPTOM WEIGHTS (Expanded with more symptoms)
 SYMPTOM_RISK_BONUS = {
     'fever': 0.10, 'pain': 0.15, 'breath': 0.15, 
-    'cough': 0.05, 'whistle': 0.20, 'tight': 0.15
+    'cough': 0.05, 'whistle': 0.20, 'tight': 0.15,
+    'wheeze': 0.25, 'crackle': 0.20  # Added based on clinical correlations
 }
 
 model.classifier = torch.nn.Sequential(
@@ -89,13 +92,19 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         spectral_flatness = geom_mean / arith_mean
         harmonic_ratio = 1.0 - spectral_flatness
         
-        return zcr, harmonic_ratio
+        kurt = kurtosis(y_chunk)
+        ent = entropy(np.abs(y_chunk) + 1e-10)
+        mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
+        
+        return zcr, harmonic_ratio, kurt, ent, mad
     except:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, 0.0
 
 def generate_spectrogram(y_chunk, sr=16000):
     try:
         waveform = torch.from_numpy(y_chunk).unsqueeze(0)
+        waveform = (waveform - waveform.min()) / (waveform.max() - waveform.min() + 1e-8)  # Min-max normalize
+        waveform[torch.abs(waveform) < 0.01] = 0  # Simple threshold denoising
         waveform = apply_bandpass_filter(waveform, sr)
         mel_transform = T.MelSpectrogram(sample_rate=sr, n_mels=128, n_fft=2048, hop_length=512, power=2.0)
         spectrogram = mel_transform(waveform)
@@ -138,7 +147,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         final_diagnosis = "Inconclusive"
         highest_severity = -1
         valid_chunks = 0
-        averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
+        probs_list = []  # For soft voting aggregation
 
         for idx, chunk in enumerate(chunks):
             rms = calculate_rms(chunk)
@@ -148,20 +157,23 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             if ai_available and img:
                 input_tensor = preprocess_ai(img).unsqueeze(0)
                 probs = predict_with_tta(model, input_tensor)
+                probs_list.append(probs)  # Collect for averaging
                 
                 p_asthma, p_normal, p_pneumonia = float(probs[0]), float(probs[1]), float(probs[2])
-                zcr, harmonic_ratio = extract_physics_features_lite(chunk)
+                zcr, harmonic_ratio, kurt, ent, mad = extract_physics_features_lite(chunk)
 
-                # 🛡️ PHYSICS VETO LOGIC (RELAXED)
-                # 1. Pneumonia Check: Keep Extreme Veto (Crackles are hard for AI)
-                if zcr > 0.40 and rms > 0.02: 
+                # 🛡️ PHYSICS VETO LOGIC (RELAXED + Enhanced)
+                # 1. Pneumonia Check: Keep Extreme Veto (Crackles are hard for AI), confirm with kurtosis
+                if zcr > 0.40 and rms > 0.02 and kurt > 3:
                     winner_idx = 2; winner_prob = 0.95; chunk_diagnosis = "Pneumonia"
-                    print(f"   ⚠️ HIERARCHY: Extreme Crackles (ZCR={zcr:.2f}) -> Forcing Pneumonia.")
+                    print(f"   ⚠️ HIERARCHY: Extreme Crackles (ZCR={zcr:.2f}, Kurt={kurt:.2f}) -> Forcing Pneumonia.")
                     averaged_probs = {"Asthma": 0.05, "Normal": 0.05, "Pneumonia": 0.90}
                 
-                # 2. Asthma Check: REMOVED. 
-                # Trust the AI. Harmonics > 0.85 can be a beep or voice.
-                # AI knows the difference.
+                # 2. Asthma Check: Reinstate with safeguards
+                elif harmonic_ratio > 0.85 and zcr < 0.20:
+                    winner_idx = 0; winner_prob = 0.95; chunk_diagnosis = "Asthma"
+                    print(f"   ⚠️ HIERARCHY: High Harmonics (Ratio={harmonic_ratio:.2f}) -> Forcing Asthma.")
+                    averaged_probs = {"Asthma": 0.90, "Normal": 0.05, "Pneumonia": 0.05}
                 
                 # 3. Standard AI Prediction
                 else:
@@ -188,18 +200,39 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
                     final_diagnosis = chunk_diagnosis
-                    if zcr > 0.40: # Only overwrite if Physics Forced it
-                         averaged_probs = {"Asthma": p_asthma, "Normal": p_normal, "Pneumonia": p_pneumonia}
+                    if zcr > 0.40 or harmonic_ratio > 0.85:  # Overwrite if Physics Forced it
+                        averaged_probs = {"Asthma": p_asthma, "Normal": p_normal, "Pneumonia": p_pneumonia}
                     else:
-                         averaged_probs = {"Asthma": float(probs[0]), "Normal": float(probs[1]), "Pneumonia": float(probs[2])}
+                        averaged_probs = {"Asthma": float(probs[0]), "Normal": float(probs[1]), "Pneumonia": float(probs[2])}
         
-        if valid_chunks == 0: final_diagnosis = "Inconclusive"
-        elif final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
+        if valid_chunks == 0:
+            final_diagnosis = "Inconclusive"
+        else:
+            # Soft voting: Average probs across all valid chunks
+            if probs_list:
+                avg_probs_tensor = torch.mean(torch.stack(probs_list), dim=0)
+                averaged_probs = {k: float(v) for k, v in zip(CLASSES, avg_probs_tensor)}
+                new_winner = max(averaged_probs, key=averaged_probs.get)
+                max_prob = averaged_probs[new_winner]
+                # Stricter threshold: If max prob < 0.50, set "Unknown"
+                if max_prob < 0.50:
+                    final_diagnosis = "Unknown"
+                elif max_prob > 0.60 and SEVERITY_SCORE.get(new_winner, 0) >= highest_severity:
+                    final_diagnosis = new_winner
+            if final_diagnosis == "Inconclusive":
+                final_diagnosis = "Normal"
 
         if symptoms:
-            risk_bonus = sum([bonus for key, bonus in SYMPTOM_RISK_BONUS.items() if key in symptoms.lower()])
+            # Improved symptom parsing: Use whole-word matching with regex to avoid false positives
+            symptoms_lower = symptoms.lower()
+            risk_bonus = 0.0
+            matched_symptoms = []
+            for key, bonus in SYMPTOM_RISK_BONUS.items():
+                if re.search(r'\b' + re.escape(key) + r'\b', symptoms_lower):
+                    risk_bonus += bonus
+                    matched_symptoms.append(key)
             if risk_bonus > 0:
-                print(f"   ⚠️ Symptoms Bonus: +{risk_bonus:.2f}")
+                print(f"   ⚠️ Symptoms Bonus: +{risk_bonus:.2f} (Matched: {', '.join(matched_symptoms)})")
                 averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + risk_bonus)
                 averaged_probs["Asthma"] = min(0.99, averaged_probs["Asthma"] + (risk_bonus * 0.8))
                 new_winner = max(averaged_probs, key=averaged_probs.get)
@@ -228,9 +261,10 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             },
             "visualizer": { "spectrogram_image": "" },
             "preliminary_assessment": f"{final_diagnosis} Pattern",
-            "risk_level_output": risk_label
+            "risk_level_output": risk_label,
+            "disclaimer": "This AI tool provides preliminary analysis based on audio input and is not a substitute for professional medical diagnosis. Consult a healthcare provider for accurate assessment and treatment."
         }
 
     except Exception as e:
         print(f"❌ ANALYZER ERROR: {e}")
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": str(e), "disclaimer": "This AI tool provides preliminary analysis based on audio input and is not a substitute for professional medical diagnosis. Consult a healthcare provider for accurate assessment and treatment."}
