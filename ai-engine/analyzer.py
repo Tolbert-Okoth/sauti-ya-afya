@@ -1,6 +1,6 @@
 import os
 
-# 🚀 FORCE SINGLE THREADING
+# 🚀 FORCE SINGLE THREADING (Crucial for Free Tier Servers)
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -19,7 +19,8 @@ import torch.nn.functional as F
 import gc 
 import subprocess 
 import time
-import random 
+import random
+import librosa # 📚 Added for Physics Math (ZCR/Harmonics)
 
 # 🛑 LIMIT TORCH THREADS
 torch.set_num_threads(1) 
@@ -28,7 +29,7 @@ print("🔄 Loading Filtered Medical Brain...")
 device = torch.device("cpu")
 model = models.mobilenet_v2(weights=None) 
 
-# 🛠️ CLASS ORDER
+# 🛠️ CLASS ORDER (Must match training folder order)
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
 SEVERITY_SCORE = {'Pneumonia': 3, 'Asthma': 2, 'Normal': 1, 'Unknown': 0}
 
@@ -51,6 +52,7 @@ try:
         state_dict = torch.load(MODEL_PATH, map_location=device)
         model.load_state_dict(state_dict)
         model.eval()
+        # Quantize for speed/memory on CPU
         model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
         ai_available = True
         print("✅ Filtered AI Model Loaded")
@@ -70,12 +72,34 @@ def calculate_rms(chunk):
     return np.sqrt(np.mean(chunk**2))
 
 def apply_bandpass_filter(waveform, sr=16000):
+    """Medical Filter: 100Hz (Heartbeat) to 2000Hz (Hiss)"""
     try:
         filtered = F_audio.highpass_biquad(waveform, sr, cutoff_freq=100.0)
         filtered = F_audio.lowpass_biquad(filtered, sr, cutoff_freq=2000.0)
         return filtered
     except:
         return waveform
+
+def extract_physics_features(y_chunk, sr=16000):
+    """
+    Extracts the 'Truth' features:
+    - ZCR (Zero Crossing Rate) -> Detects Crackles (Pneumonia)
+    - Harmonic Ratio -> Detects Whistling (Asthma)
+    """
+    try:
+        # ZCR (Spikiness/Crackles)
+        zcr = np.mean(librosa.feature.zero_crossing_rate(y_chunk))
+        
+        # Harmonic Ratio (Musicality/Wheeze)
+        # Use simple HPSS decomposition
+        y_harm, y_perc = librosa.effects.hpss(y_chunk)
+        harmonic_energy = np.sum(np.abs(y_harm))
+        percussive_energy = np.sum(np.abs(y_perc))
+        harmonic_ratio = harmonic_energy / (harmonic_energy + percussive_energy + 1e-6)
+        
+        return zcr, harmonic_ratio
+    except:
+        return 0.0, 0.0
 
 def generate_spectrogram(y_chunk, sr=16000):
     try:
@@ -95,14 +119,12 @@ def generate_spectrogram(y_chunk, sr=16000):
 def predict_with_tta(model, input_tensor):
     """Test Time Augmentation: Average 3 predictions for stability"""
     t1 = input_tensor
-    
     t2 = input_tensor.clone()
     f_start = random.randint(0, 100)
     t2[:, :, f_start:f_start+10, :] = 0 
     
     t3 = input_tensor.clone()
     t_start = random.randint(0, 100)
-    # 🛠️ FIXED: Removed extra trailing comma/colon causing IndexError
     t3[:, :, :, t_start:t_start+10] = 0  
     
     batch = torch.cat([t1, t2, t3], dim=0)
@@ -115,8 +137,9 @@ def predict_with_tta(model, input_tensor):
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
     try:
         start_time = time.time()
-        print(f"--- [START] Analysis Job (Filtered + TTA + Warning Zone) ---")
+        print(f"--- [START] Analysis Job (Filtered + TTA + Physics Veto) ---")
         
+        # 1. Load Audio with FFmpeg
         command = [
             'ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le',
             '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', 
@@ -129,7 +152,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         y_full = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
         
         chunks = []
-        CHUNK_SIZE = 80000 
+        CHUNK_SIZE = 80000 # 5 seconds
         for i in range(0, len(y_full), CHUNK_SIZE):
             chunk = y_full[i : i + CHUNK_SIZE]
             if len(chunk) > 16000: chunks.append(chunk)
@@ -139,39 +162,87 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         valid_chunks = 0
         averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
 
+        # 2. Analyze Chunks
         for idx, chunk in enumerate(chunks):
+            # A. Silence Check
             if calculate_rms(chunk) < 0.005: continue 
 
+            # B. Generate AI Inputs
             img = generate_spectrogram(chunk)
             
             if ai_available and img:
                 input_tensor = preprocess_ai(img).unsqueeze(0)
                 probs = predict_with_tta(model, input_tensor)
                 
-                winner_idx = torch.argmax(probs).item()
-                chunk_diagnosis = CLASSES[winner_idx]
-                winner_prob = float(probs[winner_idx])
+                # Unpack raw AI probabilities
+                # CLASSES = ['Asthma', 'Normal', 'Pneumonia']
+                p_asthma = float(probs[0])
+                p_normal = float(probs[1])
+                p_pneumonia = float(probs[2])
+
+                # C. CALCULATE PHYSICS FEATURES (The Truth)
+                zcr, harmonic_ratio = extract_physics_features(chunk)
+
+                # ---------------------------------------------------------
+                # 🛡️ THE MEDICAL HIERARCHY (PHYSICS VETO LOGIC)
+                # ---------------------------------------------------------
                 
-                # 🛡️ NEW LOGIC: The "Warning Zone"
-                if winner_prob < 0.40:
-                    # Too weak (<40%), assume noise
-                    chunk_diagnosis = "Normal"
-                    chunk_severity = 1
-                elif winner_prob < 0.60:
-                    # ⚠️ WARN USER (40% - 60%)
-                    # Keep the diagnosis (e.g. Asthma) but assign "Medium" severity
-                    chunk_severity = 1.5 
+                # RULE 1: CRACKLE CHECK (The "Pneumonia" Trump Card)
+                # If ZCR is high (> 0.15), it is Pneumonia. Period.
+                # Crackles override wheezes.
+                if zcr > 0.15:
+                    winner_idx = 2 # Pneumonia
+                    winner_prob = 0.95 # Force High Confidence
+                    chunk_diagnosis = "Pneumonia"
+                    print(f"   ⚠️ HIERARCHY: High Crackles (ZCR={zcr:.2f}) -> Forcing Pneumonia.")
+
+                # RULE 2: WHEEZE CHECK (The "Asthma" Test)
+                # Only if NO crackles. If Harmonic Ratio is high (> 0.25), it is Asthma.
+                elif harmonic_ratio > 0.25:
+                    winner_idx = 0 # Asthma
+                    winner_prob = 0.95 # Force High Confidence
+                    chunk_diagnosis = "Asthma"
+                    print(f"   ⚠️ HIERARCHY: Pure Wheeze (Harmonic={harmonic_ratio:.2f}) -> Forcing Asthma.")
+
+                # RULE 3: DEFAULT TO AI (With Warning Zones)
+                # If physics are subtle, trust the Trained AI.
                 else:
-                    # 🚨 HIGH CONFIDENCE (>60%)
-                    chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
+                    winner_idx = torch.argmax(probs).item()
+                    chunk_diagnosis = CLASSES[winner_idx]
+                    winner_prob = float(probs[winner_idx])
+
+                    # Apply Warning Zone (Only if Physics didn't override)
+                    if winner_prob < 0.40:
+                        chunk_diagnosis = "Normal"
+                        chunk_severity = 1
+                    elif winner_prob < 0.60:
+                        chunk_diagnosis = "Normal" # Default to Normal but flag as "Suspected" in severity logic
+                        chunk_severity = 1.5 
+                        # We allow "Suspected" logic to be handled by severity score below
+                    
+                # ---------------------------------------------------------
+
+                # Assign Severity based on final decision
+                if chunk_diagnosis == "Normal" and winner_prob < 0.60:
+                     chunk_severity = 1.5 if winner_prob > 0.4 else 1
+                else:
+                     chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
                 
-                print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity})")
+                print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity} | ZCR: {zcr:.2f} | Harm: {harmonic_ratio:.2f})")
                 valid_chunks += 1
 
+                # Update Global Diagnosis if this chunk is more severe
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
                     final_diagnosis = chunk_diagnosis
-                    averaged_probs = {"Asthma": float(probs[0]), "Normal": float(probs[1]), "Pneumonia": float(probs[2])}
+                    # Store probabilities for final output
+                    averaged_probs = {"Asthma": p_asthma, "Normal": p_normal, "Pneumonia": p_pneumonia}
+                    
+                    # If we forced a diagnosis via Physics, update stats to match
+                    if chunk_diagnosis == "Pneumonia" and zcr > 0.15:
+                         averaged_probs = {"Asthma": 0.05, "Normal": 0.05, "Pneumonia": 0.90}
+                    elif chunk_diagnosis == "Asthma" and harmonic_ratio > 0.25:
+                         averaged_probs = {"Asthma": 0.90, "Normal": 0.05, "Pneumonia": 0.05}
         
         if valid_chunks == 0: final_diagnosis = "Inconclusive"
         elif final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
@@ -202,14 +273,16 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         # 🎯 FINAL VERDICT FORMATTING
         risk_label = "Low"
         
-        if final_diagnosis == "Normal":
+        # Handle "Suspected" Logic
+        if highest_severity == 1.5 and final_diagnosis == "Normal":
+             final_diagnosis = "Suspected Respiratory Issue"
+             risk_label = "Medium"
+        elif final_diagnosis == "Normal":
             risk_label = "Low"
         elif highest_severity == 1.5:
-            # The "Grey Area" case
             final_diagnosis = f"Suspected {final_diagnosis}"
             risk_label = "Medium"
         else:
-            # The "High Confidence" case
             risk_label = "High"
 
         print(f"--- [SUCCESS] Verdict: {final_diagnosis} (Risk: {risk_label}) ---")
