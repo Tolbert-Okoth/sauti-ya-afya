@@ -89,33 +89,42 @@ def apply_bandpass_filter(waveform, sr=16000):
     except:
         return waveform
 
-def detect_events(y_chunk, sr=16000, min_duration=0.005, energy_threshold=0.01):
-    # Simple energy-based event detection (onsets where RMS rises above threshold)
-    frame_length = 512
-    hop_length = 256
-    waveform = torch.from_numpy(y_chunk).unsqueeze(0)
-    rms = T.AmplitudeToDB()(torchaudio.functional.compute_rms(waveform, frame_length=frame_length, hop_length=hop_length)).squeeze().numpy()
-    
-    events = []
-    in_event = False
-    start_idx = None
-    
-    # Sensitive Threshold: 15dB below peak to catch soft crackles
-    max_vol = np.max(rms)
-    threshold = max_vol - 15 
-    
-    for i, val in enumerate(rms):
-        if val > threshold and not in_event:
-            in_event = True
-            start_idx = i * hop_length
-        elif val <= threshold and in_event:
-            in_event = False
-            end_idx = i * hop_length
-            duration = (end_idx - start_idx) / sr
-            if duration >= min_duration:
-                events.append(duration)
-    
-    return events 
+def count_transients_lite(y_chunk):
+    """
+    Detects sudden spikes in amplitude (Crackles) independent of background noise.
+    Returns the number of significant transients.
+    """
+    try:
+        # 1. Compute Amplitude Envelope (Rectified + Smoothed)
+        y_abs = np.abs(y_chunk)
+        # Fast moving average (approx 10ms window at 16k rate = 160 samples)
+        window_size = 160
+        cumsum = np.cumsum(np.insert(y_abs, 0, 0))
+        envelope = (cumsum[window_size:] - cumsum[:-window_size]) / window_size
+        
+        # 2. Compute Derivative (Rate of Change)
+        delta = np.diff(envelope)
+        
+        # 3. Detect Spikes
+        peak_amp = np.max(envelope)
+        if peak_amp < 0.005: return 0 # Too quiet
+        
+        # A crackle is a sudden jump > 10% of the peak volume
+        thresh = peak_amp * 0.10 
+        
+        # Count how many distinct 20ms blocks have a spike
+        # (This prevents counting one crackle as multiple spikes)
+        block_size = 320 
+        n_blocks = len(delta) // block_size
+        count = 0
+        for i in range(n_blocks):
+            # Check if any point in this block exceeds threshold
+            if np.max(delta[i*block_size : (i+1)*block_size]) > thresh:
+                count += 1
+                
+        return count
+    except:
+        return 0
 
 def extract_physics_features_lite(y_chunk, sr=16000):
     try:
@@ -126,8 +135,6 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         log_spectrum = np.log(spectrum)
         geom_mean = np.exp(np.mean(log_spectrum))
         arith_mean = np.mean(spectrum)
-        
-        # Spectral Flatness: 1.0 = White Noise, 0.0 = Pure Sine Wave
         spectral_flatness = geom_mean / arith_mean
         harmonic_ratio = 1.0 - spectral_flatness
         
@@ -139,19 +146,12 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         
         mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
         
-        durations = detect_events(y_chunk, sr)
-        if not durations:
-            # If no events, assume silence or continuous noise
-            return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, 0.0, 0.0
+        # NEW: Transient Counter
+        transient_count = count_transients_lite(y_chunk)
         
-        avg_duration = np.mean(durations)
-        # Crackle = Very short event (< 30ms)
-        crackle_count = sum(1 for d in durations if d < 0.03) 
-        crackle_frac = crackle_count / len(durations)
-        
-        return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, avg_duration, crackle_frac
+        return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transient_count
     except:
-        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0
 
 def generate_spectrogram(y_chunk, sr=16000):
     try:
@@ -203,7 +203,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
         
         physics_override = False
-        crackle_fracs = [] 
+        total_transients = 0 # Track global transients
 
         for idx, chunk in enumerate(chunks):
             rms = calculate_rms(chunk)
@@ -215,17 +215,16 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 probs = predict_with_tta(model, input_tensor)
                 probs_list.append(probs) 
                 
-                zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, avg_duration, crackle_frac = extract_physics_features_lite(chunk)
-                crackle_fracs.append(crackle_frac)
+                zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients = extract_physics_features_lite(chunk)
+                total_transients += transients
 
-                # 1. PNEUMONIA PHYSICS CHECK (Positive Veto - More Sensitive)
-                # Lowered ZCR to 0.15 (Wet crackles)
-                # Lowered Crackle Frac to 0.15 (Even a few pops matter)
-                if (zcr > 0.15 or kurt > 1.5) and crackle_frac > 0.15:
+                # 1. PNEUMONIA PHYSICS CHECK (The "Pop" Veto)
+                # If we see > 4 transients in 5 seconds, it's highly likely Crackles.
+                if transients > 4:
                     chunk_diagnosis = "Pneumonia"
                     chunk_severity = 3
                     winner_prob = 0.90 
-                    print(f"   ⚠️ HIERARCHY: Detected Crackles (ZCR={zcr:.2f}, Pops={crackle_frac:.2f}) -> Forcing Pneumonia.")
+                    print(f"   ⚠️ HIERARCHY: High Transients ({transients} pops) -> Forcing Pneumonia.")
                     probs_list[-1] = torch.tensor([0.05, 0.05, 0.90]) 
                     physics_override = True
                 
@@ -235,22 +234,19 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
                     
-                    # 🛡️ ASTHMA SANITY CHECK (The "Purity Test" - Strict)
+                    # 🛡️ ASTHMA SANITY CHECK
                     if chunk_diagnosis == "Asthma":
                         veto_triggered = False
                         
                         # Veto A: Too Scratchy (ZCR > 0.20)
                         if zcr > 0.20: veto_triggered = True
                             
-                        # Veto B: Too Noisy (Flatness > 0.25) 
-                        # Pure Asthma is tonal (<0.15). >0.25 is noise or crackles.
-                        elif spectral_flatness > 0.25: veto_triggered = True
-
-                        # Veto C: Too Choppy (Duration < 0.08s) - IF valid duration exists
-                        elif avg_duration > 0.005 and avg_duration < 0.08: veto_triggered = True
+                        # Veto B: Too Many Transients (Pops)
+                        # Asthma is smooth. If there are > 2 pops, it's suspicious.
+                        elif transients > 2: veto_triggered = True
 
                         if veto_triggered:
-                            print(f"   🛡️ VETO: AI=Asthma, but Physics (ZCR={zcr:.2f}, Flat={spectral_flatness:.2f}, Dur={avg_duration:.3f}s) -> Switching to Pneumonia.")
+                            print(f"   🛡️ VETO: AI=Asthma, but Physics (ZCR={zcr:.2f}, Pops={transients}) indicates Crackles -> Switching to Pneumonia.")
                             chunk_diagnosis = "Pneumonia"
                             chunk_severity = 3
                             winner_prob = 0.85 
@@ -296,18 +292,14 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
-            # Global Crackle Bonus
-            if crackle_fracs:
-                avg_crackle_frac = np.mean(crackle_fracs)
-                # If 15% of the entire audio was popping, push Pneumonia
-                if avg_crackle_frac > 0.15:
-                    crackle_bonus = avg_crackle_frac * CRACKLE_WEIGHT
-                    print(f"   ⚠️ Global Crackle Bonus: +{crackle_bonus:.2f}")
-                    averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + crackle_bonus)
-                    
-                    new_winner = max(averaged_probs, key=averaged_probs.get)
-                    if SEVERITY_SCORE.get(new_winner, 0) >= SEVERITY_SCORE.get(final_diagnosis.replace("Suspected ", ""), 0):
-                        final_diagnosis = new_winner
+            # GLOBAL TRANSIENT CHECK
+            # Even if chunks were borderline, if total pops are high, force Pneumonia.
+            if total_transients > 6 and final_diagnosis != "Pneumonia":
+                 print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
+                 final_diagnosis = "Pneumonia"
+                 averaged_probs["Pneumonia"] = 0.85
+                 averaged_probs["Asthma"] = 0.10
+                 averaged_probs["Normal"] = 0.05
 
         if symptoms:
             matched = []
