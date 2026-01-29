@@ -172,11 +172,11 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 
                 zcr, harmonic_ratio, kurt, ent, mad = extract_physics_features_lite(chunk)
                 
-                # 1. PNEUMONIA PHYSICS CHECK (The Veto)
+                # 1. PNEUMONIA PHYSICS CHECK (Veto)
                 if zcr > 0.20 and rms > 0.02 and kurt > 2.0:
                     chunk_diagnosis = "Pneumonia"
                     chunk_severity = 3
-                    winner_prob = 0.90 # FIX: Added Missing Variable
+                    winner_prob = 0.90 
                     print(f"   ⚠️ HIERARCHY: Detected Crackles (ZCR={zcr:.2f}, Kurt={kurt:.2f}) -> Forcing Pneumonia.")
                     probs_list[-1] = torch.tensor([0.05, 0.05, 0.90]) 
                     physics_override = True
@@ -187,13 +187,15 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
                     
-                    # 🛡️ ASTHMA SANITY CHECK (Negative Veto)
+                    # 🛡️ ASTHMA SANITY CHECK (Revised)
                     if chunk_diagnosis == "Asthma":
-                        if zcr > 0.15 or (SCIPY_AVAILABLE and ent > 4.5):
-                            print(f"   🛡️ VETO: AI said Asthma, but Physics (ZCR={zcr:.2f}) indicates Chaos -> Switching to Pneumonia.")
+                        # FIX: Only switch to Pneumonia if ZCR indicates REAL CRACKLES (>0.25).
+                        # We removed the 'Entropy' check because breathy asthma was triggering it falsely.
+                        if zcr > 0.25: 
+                            print(f"   🛡️ VETO: AI said Asthma, but Physics (ZCR={zcr:.2f}) indicates Crackles -> Switching to Pneumonia.")
                             chunk_diagnosis = "Pneumonia"
                             chunk_severity = 3
-                            winner_prob = 0.85 # FIX: Updated confidence
+                            winner_prob = 0.85 
                             probs_list[-1] = torch.tensor([0.10, 0.05, 0.85]) 
                             physics_override = True
                         else:
@@ -219,7 +221,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         if valid_chunks == 0:
             final_diagnosis = "Inconclusive"
         else:
-            # SOFT VOTING (The Consensus)
             if probs_list:
                 avg_probs_tensor = torch.mean(torch.stack(probs_list), dim=0)
                 if avg_probs_tensor.dim() > 1: avg_probs_tensor = avg_probs_tensor.squeeze()
