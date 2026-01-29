@@ -48,6 +48,9 @@ SYMPTOM_RISK_BONUS = {
     'wheeze': 0.25, 'crackle': 0.20  
 }
 
+# NEW: Crackle weight to emphasize as key differentiator
+CRACKLE_WEIGHT = 0.5
+
 model.classifier = torch.nn.Sequential(
     torch.nn.Dropout(0.2),
     torch.nn.Linear(model.last_channel, 3)
@@ -206,6 +209,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
         
         physics_override = False
+        crackle_fracs = []  # NEW: Collect crackle fractions for weighting
 
         for idx, chunk in enumerate(chunks):
             rms = calculate_rms(chunk)
@@ -265,6 +269,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
                 print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity})")
                 valid_chunks += 1
+                crackle_fracs.append(crackle_frac)  # NEW: Append for later weighting
 
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
@@ -298,6 +303,20 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                         final_diagnosis = new_winner
 
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
+            
+            # NEW: Apply crackle weight as key differentiator
+            if valid_chunks > 0:
+                avg_crackle_frac = np.mean(crackle_fracs)
+                crackle_bonus = avg_crackle_frac * CRACKLE_WEIGHT
+                print(f"   ⚠️ Crackle Bonus: +{crackle_bonus:.2f} (Avg Frac={avg_crackle_frac:.2f})")
+                averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + crackle_bonus)
+                
+                new_winner = max(averaged_probs, key=averaged_probs.get)
+                if averaged_probs[new_winner] > 0.60:
+                    highest_severity = max(highest_severity, SEVERITY_SCORE.get(new_winner, 0))
+                
+                if SEVERITY_SCORE.get(new_winner, 0) >= SEVERITY_SCORE.get(final_diagnosis.replace("Suspected ", ""), 0): 
+                    final_diagnosis = new_winner
 
         if symptoms:
             matched = []
