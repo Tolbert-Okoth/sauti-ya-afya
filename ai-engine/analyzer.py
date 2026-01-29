@@ -49,7 +49,7 @@ SYMPTOM_RISK_BONUS = {
 }
 
 # NEW: Crackle weight to emphasize as key differentiator
-CRACKLE_WEIGHT = 0.5
+CRACKLE_WEIGHT = 0.6 # Increased weight
 
 model.classifier = torch.nn.Sequential(
     torch.nn.Dropout(0.2),
@@ -93,7 +93,6 @@ def detect_events(y_chunk, sr=16000, min_duration=0.005, energy_threshold=0.01):
     # Simple energy-based event detection (onsets where RMS rises above threshold)
     frame_length = 512
     hop_length = 256
-    # Compute RMS using torch to avoid manual sliding window loops
     waveform = torch.from_numpy(y_chunk).unsqueeze(0)
     rms = T.AmplitudeToDB()(torchaudio.functional.compute_rms(waveform, frame_length=frame_length, hop_length=hop_length)).squeeze().numpy()
     
@@ -101,11 +100,9 @@ def detect_events(y_chunk, sr=16000, min_duration=0.005, energy_threshold=0.01):
     in_event = False
     start_idx = None
     
-    # Simple threshold logic on DB scale (approximate)
-    # DB is usually negative. Silence might be -80dB. Loud is -10dB.
-    # We'll use a relative threshold based on max volume in chunk
+    # Relative threshold: 15dB below peak (More sensitive to quiet crackles)
     max_vol = np.max(rms)
-    threshold = max_vol - 20 # 20dB below peak
+    threshold = max_vol - 15 
     
     for i, val in enumerate(rms):
         if val > threshold and not in_event:
@@ -118,7 +115,7 @@ def detect_events(y_chunk, sr=16000, min_duration=0.005, energy_threshold=0.01):
             if duration >= min_duration:
                 events.append(duration)
     
-    return events # List of durations
+    return events 
 
 def extract_physics_features_lite(y_chunk, sr=16000):
     try:
@@ -129,6 +126,8 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         log_spectrum = np.log(spectrum)
         geom_mean = np.exp(np.mean(log_spectrum))
         arith_mean = np.mean(spectrum)
+        
+        # Spectral Flatness: 1.0 = Noise (Crackles), 0.0 = Tone (Asthma)
         spectral_flatness = geom_mean / arith_mean
         harmonic_ratio = 1.0 - spectral_flatness
         
@@ -140,19 +139,18 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         
         mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
         
-        # New: Detect events and compute per-event stats
         durations = detect_events(y_chunk, sr)
         if not durations:
-            return zcr, harmonic_ratio, kurt, ent, mad, 0.0, 0.0
+            return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, 0.0, 0.0
         
         avg_duration = np.mean(durations)
-        # Crackles are short (< 30ms), Wheezes are long (> 100ms)
+        # Crackle = Very short event (< 30ms)
         crackle_count = sum(1 for d in durations if d < 0.03) 
         crackle_frac = crackle_count / len(durations)
         
-        return zcr, harmonic_ratio, kurt, ent, mad, avg_duration, crackle_frac
+        return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, avg_duration, crackle_frac
     except:
-        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
 
 def generate_spectrogram(y_chunk, sr=16000):
     try:
@@ -216,16 +214,17 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 probs = predict_with_tta(model, input_tensor)
                 probs_list.append(probs) 
                 
-                zcr, harmonic_ratio, kurt, ent, mad, avg_duration, crackle_frac = extract_physics_features_lite(chunk)
+                zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, avg_duration, crackle_frac = extract_physics_features_lite(chunk)
                 crackle_fracs.append(crackle_frac)
 
-                # 1. PNEUMONIA PHYSICS CHECK (The Veto)
-                # Must be scratchy (ZCR), spiky (Kurt), and SHORT (Duration)
-                if zcr > 0.20 and rms > 0.02 and kurt > 2.0 and crackle_frac > 0.4:
+                # 1. PNEUMONIA PHYSICS CHECK (The "Zero Tolerance" Veto)
+                # Lowered Crackle Threshold to 0.2 (20% pops = Pneumonia)
+                # Lowered ZCR to 0.1 (Wet crackles are basier)
+                if (zcr > 0.10 or kurt > 1.5) and crackle_frac > 0.20:
                     chunk_diagnosis = "Pneumonia"
                     chunk_severity = 3
                     winner_prob = 0.90 
-                    print(f"   ⚠️ HIERARCHY: Detected Crackles (ZCR={zcr:.2f}, Dur={avg_duration:.3f}s) -> Forcing Pneumonia.")
+                    print(f"   ⚠️ HIERARCHY: Detected Crackles (ZCR={zcr:.2f}, Pops={crackle_frac:.2f}) -> Forcing Pneumonia.")
                     probs_list[-1] = torch.tensor([0.05, 0.05, 0.90]) 
                     physics_override = True
                 
@@ -235,32 +234,22 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
                     
-                    # 🛡️ ASTHMA SANITY CHECK (The "Purity Test")
+                    # 🛡️ ASTHMA SANITY CHECK
                     if chunk_diagnosis == "Asthma":
-                        # CRITICAL FIX: Only trigger Veto if we are SURE it is bad physics.
-                        # 1. Harmonic Ratio must be VALID (> 0) and low (< 0.40) to indicate noise.
-                        # 2. Duration must be VALID (> 0.005) and short (< 0.05) to indicate crackles.
-                        # If Avg Duration is 0.0 (no events detected), we DO NOT Veto. We trust the AI.
-                        
                         veto_triggered = False
                         
-                        # Veto Condition A: High Scratchiness (ZCR)
-                        if zcr > 0.20:
-                            veto_triggered = True
-                            print(f"   🛡️ VETO: AI=Asthma, but ZCR={zcr:.2f} (Scratchy).")
+                        # Veto A: High Scratchiness
+                        if zcr > 0.25: veto_triggered = True
                             
-                        # Veto Condition B: Short Duration Events (Crackles) - ONLY if valid duration
-                        elif avg_duration > 0.005 and avg_duration < 0.05:
-                            veto_triggered = True
-                            print(f"   🛡️ VETO: AI=Asthma, but Avg Dur={avg_duration:.3f}s (Too Short).")
+                        # Veto B: Short Duration Events (Crackles) - Critical for Pneumonia mismatch
+                        elif avg_duration > 0.005 and avg_duration < 0.05: veto_triggered = True
 
-                        # Veto Condition C: Very Low Tonality (Pure Noise) - ONLY if valid
-                        elif harmonic_ratio > 0.0 and harmonic_ratio < 0.40:
-                            veto_triggered = True
-                            print(f"   🛡️ VETO: AI=Asthma, but Harm={harmonic_ratio:.2f} (Too Noisy).")
+                        # Veto C: Too much broadband noise (Flatness)
+                        # Real Asthma is tonal (Flatness < 0.2). If > 0.3, it's noise/breath.
+                        elif spectral_flatness > 0.3: veto_triggered = True
 
                         if veto_triggered:
-                            print(f"   -> Switching to Pneumonia.")
+                            print(f"   🛡️ VETO: AI=Asthma, but Physics (ZCR={zcr:.2f}, Flat={spectral_flatness:.2f}, Dur={avg_duration:.3f}s) -> Switching to Pneumonia.")
                             chunk_diagnosis = "Pneumonia"
                             chunk_severity = 3
                             winner_prob = 0.85 
@@ -269,15 +258,11 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                         else:
                             chunk_severity = 2 
                     
-                    elif chunk_diagnosis == "Normal": 
-                        chunk_severity = 1
-                    
+                    elif chunk_diagnosis == "Normal": chunk_severity = 1
                     elif winner_prob < 0.60: 
                         chunk_diagnosis = f"Suspected {chunk_diagnosis}"
                         chunk_severity = 1.5 
-                    
-                    else: 
-                        chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
+                    else: chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
 
                 print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity})")
                 valid_chunks += 1
@@ -305,19 +290,20 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                          elif highest_severity == 2: final_diagnosis = "Asthma"
                 
                 else:
-                    if max_prob < 0.50:
-                        final_diagnosis = "Normal" 
-                    else:
-                        final_diagnosis = new_winner
+                    if max_prob < 0.50: final_diagnosis = "Normal" 
+                    else: final_diagnosis = new_winner
 
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
+            # Global Crackle Bonus
             if crackle_fracs:
                 avg_crackle_frac = np.mean(crackle_fracs)
-                if avg_crackle_frac > 0.3:
+                # If 20% of the entire audio was popping, push Pneumonia
+                if avg_crackle_frac > 0.20:
                     crackle_bonus = avg_crackle_frac * CRACKLE_WEIGHT
                     print(f"   ⚠️ Global Crackle Bonus: +{crackle_bonus:.2f}")
                     averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + crackle_bonus)
+                    
                     new_winner = max(averaged_probs, key=averaged_probs.get)
                     if SEVERITY_SCORE.get(new_winner, 0) >= SEVERITY_SCORE.get(final_diagnosis.replace("Suspected ", ""), 0):
                         final_diagnosis = new_winner
