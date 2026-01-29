@@ -1,7 +1,7 @@
 import os
-import re  # Added for better symptom parsing
+import re 
 
-# 🚀 FORCE SINGLE THREADING (Crucial for Free Tier)
+# 🚀 FORCE SINGLE THREADING
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -22,7 +22,7 @@ import subprocess
 import time
 import random
 
-# 🛡️ SAFE IMPORT FOR SCIPY (In case of memory limits)
+# 🛡️ SAFE IMPORT FOR SCIPY
 try:
     from scipy.stats import kurtosis, entropy
     SCIPY_AVAILABLE = True
@@ -39,10 +39,9 @@ model = models.mobilenet_v2(weights=None)
 
 # 🛠️ CLASS ORDER
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
-# FIX: Normal is always 1
 SEVERITY_SCORE = {'Pneumonia': 3, 'Asthma': 2, 'Normal': 1, 'Unknown': 0}
 
-# 🏥 HYBRID SYMPTOM WEIGHTS (Expanded)
+# 🏥 HYBRID SYMPTOM WEIGHTS
 SYMPTOM_RISK_BONUS = {
     'fever': 0.10, 'pain': 0.15, 'breath': 0.15, 
     'cough': 0.05, 'whistle': 0.20, 'tight': 0.15,
@@ -89,11 +88,9 @@ def apply_bandpass_filter(waveform, sr=16000):
 
 def extract_physics_features_lite(y_chunk, sr=16000):
     try:
-        # 1. ZCR
         zero_crossings = np.nonzero(np.diff(y_chunk > 0))[0]
         zcr = len(zero_crossings) / len(y_chunk)
         
-        # 2. Harmonicity
         spectrum = np.abs(np.fft.rfft(y_chunk)) + 1e-10
         log_spectrum = np.log(spectrum)
         geom_mean = np.exp(np.mean(log_spectrum))
@@ -101,16 +98,13 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         spectral_flatness = geom_mean / arith_mean
         harmonic_ratio = 1.0 - spectral_flatness
         
-        # 3. Advanced Stats (Kurtosis/Entropy)
         if SCIPY_AVAILABLE:
             kurt = kurtosis(y_chunk)
             ent = entropy(np.abs(y_chunk) + 1e-10)
         else:
-            kurt = 0.0
-            ent = 0.0
-            
-        mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
+            kurt = 0.0; ent = 0.0
         
+        mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
         return zcr, harmonic_ratio, kurt, ent, mad
     except:
         return 0.0, 0.0, 0.0, 0.0, 0.0
@@ -118,11 +112,8 @@ def extract_physics_features_lite(y_chunk, sr=16000):
 def generate_spectrogram(y_chunk, sr=16000):
     try:
         waveform = torch.from_numpy(y_chunk).unsqueeze(0)
-        # Normalize
         waveform = (waveform - waveform.min()) / (waveform.max() - waveform.min() + 1e-8)
-        # Simple Denoise
         waveform[torch.abs(waveform) < 0.01] = 0 
-        
         waveform = apply_bandpass_filter(waveform, sr)
         mel_transform = T.MelSpectrogram(sample_rate=sr, n_mels=128, n_fft=2048, hop_length=512, power=2.0)
         spectrogram = mel_transform(waveform)
@@ -148,7 +139,6 @@ def predict_with_tta(model, input_tensor):
 
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
     try:
-        start_time = time.time()
         print(f"--- [START] Analysis Job (Lite Mode: No Librosa) ---")
         
         command = ['ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', '-preset', 'ultrafast', '-loglevel', 'error', '-']
@@ -165,9 +155,10 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         final_diagnosis = "Inconclusive"
         highest_severity = -1
         valid_chunks = 0
-        probs_list = [] # Soft voting aggregation
-
+        probs_list = [] 
         averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
+        
+        physics_override = False
 
         for idx, chunk in enumerate(chunks):
             rms = calculate_rms(chunk)
@@ -177,27 +168,25 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             if ai_available and img:
                 input_tensor = preprocess_ai(img).unsqueeze(0)
                 probs = predict_with_tta(model, input_tensor)
-                probs_list.append(probs) # Collect
+                probs_list.append(probs) 
                 
-                p_asthma, p_normal, p_pneumonia = float(probs[0]), float(probs[1]), float(probs[2])
                 zcr, harmonic_ratio, kurt, ent, mad = extract_physics_features_lite(chunk)
-
-                # 🛡️ PHYSICS VETO LOGIC (RELAXED + Enhanced)
-                # 1. Pneumonia Check: High ZCR + High Kurtosis (Outliers/Spikes)
+                
+                # 1. Pneumonia Check (Physics Veto)
                 if zcr > 0.40 and rms > 0.02 and kurt > 3.0:
                     winner_idx = 2; winner_prob = 0.95; chunk_diagnosis = "Pneumonia"
-                    print(f"   ⚠️ HIERARCHY: Extreme Crackles (ZCR={zcr:.2f}, Kurt={kurt:.2f}) -> Forcing Pneumonia.")
-                    averaged_probs = {"Asthma": 0.05, "Normal": 0.05, "Pneumonia": 0.90}
-                    # Clear probs list to ensure veto holds
-                    probs_list = [torch.tensor([0.05, 0.05, 0.90])] 
+                    print(f"   ⚠️ HIERARCHY: Extreme Crackles (ZCR={zcr:.2f}) -> Forcing Pneumonia.")
+                    probs_list[-1] = torch.tensor([[0.05, 0.05, 0.95]]) 
+                    physics_override = True
+                    chunk_severity = 3 # FIX: Added Missing Assignment
                 
-                # 2. Asthma Check: Reinstated with SAFEGUARDS
-                # Must be very tonal (>0.85) AND not chaotic (ZCR < 0.20)
+                # 2. Asthma Check (Reinstate, Strict)
                 elif harmonic_ratio > 0.85 and zcr < 0.20:
                     winner_idx = 0; winner_prob = 0.95; chunk_diagnosis = "Asthma"
-                    print(f"   ⚠️ HIERARCHY: High Harmonics (Ratio={harmonic_ratio:.2f}) -> Forcing Asthma.")
-                    averaged_probs = {"Asthma": 0.90, "Normal": 0.05, "Pneumonia": 0.05}
-                    probs_list = [torch.tensor([0.90, 0.05, 0.05])]
+                    print(f"   ⚠️ HIERARCHY: Pure Harmonics (Ratio={harmonic_ratio:.2f}) -> Forcing Asthma.")
+                    probs_list[-1] = torch.tensor([[0.95, 0.05, 0.05]])
+                    physics_override = True
+                    chunk_severity = 2 # FIX: Added Missing Assignment
                 
                 # 3. Standard AI
                 else:
@@ -205,56 +194,56 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
                     
-                    if chunk_diagnosis == "Normal":
-                        chunk_severity = 1 
-                    elif winner_prob < 0.60:
-                        chunk_diagnosis = f"Suspected {chunk_diagnosis}" 
-                        chunk_severity = 1.5 
-                    else:
-                        chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
+                    if chunk_diagnosis == "Normal": chunk_severity = 1
+                    elif winner_prob < 0.60: chunk_diagnosis = f"Suspected {chunk_diagnosis}"; chunk_severity = 1.5 
+                    else: chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
 
-                if chunk_diagnosis == "Normal": chunk_severity = 1
-                
                 print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity})")
                 valid_chunks += 1
 
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
                     final_diagnosis = chunk_diagnosis
-                    if zcr > 0.40 or harmonic_ratio > 0.85: # Force override stats
-                         averaged_probs = {"Asthma": p_asthma, "Normal": p_normal, "Pneumonia": p_pneumonia}
-                    else:
-                         averaged_probs = {"Asthma": float(probs[0]), "Normal": float(probs[1]), "Pneumonia": float(probs[2])}
         
         if valid_chunks == 0:
             final_diagnosis = "Inconclusive"
         else:
-            # SOFT VOTING AGGREGATION
+            # SOFT VOTING (The Consensus)
             if probs_list:
+                # 1. Calculate Average Probability across all chunks
                 avg_probs_tensor = torch.mean(torch.stack(probs_list), dim=0)
+                if avg_probs_tensor.dim() > 1: avg_probs_tensor = avg_probs_tensor.squeeze()
+
                 averaged_probs = {k: float(v) for k, v in zip(CLASSES, avg_probs_tensor)}
                 new_winner = max(averaged_probs, key=averaged_probs.get)
                 max_prob = averaged_probs[new_winner]
                 
-                # If avg confidence is weak, default to Unknown/Normal
-                if max_prob < 0.50:
-                    final_diagnosis = "Normal" # Safer than "Unknown"
-                elif max_prob > 0.60 and SEVERITY_SCORE.get(new_winner, 0) >= highest_severity:
-                    final_diagnosis = new_winner
-            
+                # 3. CONSENSUS LOGIC
+                if physics_override:
+                     if SEVERITY_SCORE.get(new_winner, 0) >= highest_severity:
+                         final_diagnosis = new_winner
+                     else:
+                         # Force diagnosis to match severity if override happened
+                         if highest_severity == 3: final_diagnosis = "Pneumonia"
+                         elif highest_severity == 2: final_diagnosis = "Asthma"
+                
+                else:
+                    if max_prob < 0.50:
+                        final_diagnosis = "Normal" 
+                    else:
+                        final_diagnosis = new_winner
+
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
 
         if symptoms:
-            symptoms_lower = symptoms.lower()
+            matched = []
             risk_bonus = 0.0
-            matched_symptoms = []
             for key, bonus in SYMPTOM_RISK_BONUS.items():
-                if re.search(r'\b' + re.escape(key) + r'\b', symptoms_lower):
-                    risk_bonus += bonus
-                    matched_symptoms.append(key)
+                if re.search(r'\b' + re.escape(key) + r'\b', symptoms.lower()):
+                    risk_bonus += bonus; matched.append(key)
             
             if risk_bonus > 0:
-                print(f"   ⚠️ Symptoms Bonus: +{risk_bonus:.2f} (Matched: {', '.join(matched_symptoms)})")
+                print(f"   ⚠️ Symptoms Bonus: +{risk_bonus:.2f} (Matched: {matched})")
                 averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + risk_bonus)
                 averaged_probs["Asthma"] = min(0.99, averaged_probs["Asthma"] + (risk_bonus * 0.8))
                 
