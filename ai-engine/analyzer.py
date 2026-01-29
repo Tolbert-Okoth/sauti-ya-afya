@@ -90,11 +90,14 @@ def apply_bandpass_filter(waveform, sr=16000):
 
 def count_transients_lite(y_chunk):
     """
-    Advanced 'Jerk' Detector. 
-    Uses 2nd Derivative to find micro-explosions (crackles).
+    Advanced 'Jerk' Detector with Absolute Noise Floor.
     """
     try:
         y_abs = np.abs(y_chunk)
+        # 1. Amplitude Gate: If signal is quiet, it can't be pneumonia.
+        # Normal breath is usually < 0.02 RMS.
+        if np.max(y_abs) < 0.02: return 0
+
         window_size = 80 
         cumsum = np.cumsum(np.insert(y_abs, 0, 0))
         envelope = (cumsum[window_size:] - cumsum[:-window_size]) / window_size
@@ -103,10 +106,11 @@ def count_transients_lite(y_chunk):
         acceleration = np.diff(velocity)
         
         peak_accel = np.max(np.abs(acceleration))
-        if peak_accel < 0.0002: return 0
-
-        # Threshold: 20% of max accel
-        thresh = peak_accel * 0.20 
+        
+        # 2. THE FIX: Absolute Minimum Threshold (0.003)
+        # Even if relative threshold is low, we demand at least 0.003 units of "Jerk".
+        # This ignores static and soft breath texture.
+        thresh = max(peak_accel * 0.25, 0.003) 
         
         block_size = 320 
         n_blocks = len(acceleration) // block_size
@@ -114,6 +118,11 @@ def count_transients_lite(y_chunk):
         for i in range(n_blocks):
             if np.max(acceleration[i*block_size : (i+1)*block_size]) > thresh:
                 count += 1
+        
+        # 3. Sanity Cap: Real crackles rarely exceed 25 per 5s (5Hz).
+        # If we see 60+, it's likely just electrical noise/interference.
+        if count > 30: return 0 
+        
         return count
     except:
         return 0
@@ -208,18 +217,17 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients = extract_physics_features_lite(chunk)
                 total_transients += transients
 
-                # 1. PNEUMONIA PHYSICS CHECK (Tiered Aggression)
+                # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 
-                # Tier 1: Machine-Gun Popping (Ignore Musicality)
-                # If >6 pops in 5s, it is definitely crackles.
-                if transients > 6:
-                    print(f"   ⚠️ HIERARCHY: High Intensity Crackles ({transients} pops) -> Forcing Pneumonia.")
+                # Tier 1: Strong Crackles (Requires 5+ significant pops)
+                if transients >= 5:
+                    print(f"   ⚠️ HIERARCHY: High Confidence Crackles ({transients} pops) -> Forcing Pneumonia.")
                     force_pneumonia = True
                     
-                # Tier 2: Moderate Popping (Respect Musicality)
-                # If >3 pops AND sound isn't extremely pure (Harm < 0.7)
-                elif transients > 3 and harmonic_ratio < 0.70:
+                # Tier 2: Subtle Crackles (Requires 3+ pops AND Non-Musicality)
+                # If it's musical (Harm > 0.6), we assume the 'pops' are just vibrato/artifacts.
+                elif transients >= 3 and harmonic_ratio < 0.60:
                     print(f"   ⚠️ HIERARCHY: Moderate Crackles ({transients} pops, Harm={harmonic_ratio:.2f}) -> Forcing Pneumonia.")
                     force_pneumonia = True
 
@@ -240,8 +248,8 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     if chunk_diagnosis == "Asthma":
                         veto_triggered = False
                         
-                        # Veto A: Pure Noise (Spectral Flatness > 0.25)
-                        if spectral_flatness > 0.25: veto_triggered = True
+                        # Veto A: Pure Noise (Spectral Flatness > 0.30)
+                        if spectral_flatness > 0.30: veto_triggered = True
                             
                         # Veto B: Hidden Crackles (Transients > 2)
                         elif transients > 2: veto_triggered = True
@@ -293,12 +301,11 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
-            # GLOBAL TRANSIENT CHECK (Aggressive Override)
-            # If we saw > 8 pops TOTAL, it is Pneumonia. 
-            # We allow harmonic ratio up to 0.7 here to catch musical pneumonia.
+            # GLOBAL TRANSIENT CHECK
+            # If total pops > 8 and audio wasn't super musical, force Pneumonia.
             avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
             
-            if total_transients > 8 and avg_harm < 0.7 and final_diagnosis != "Pneumonia":
+            if total_transients > 8 and avg_harm < 0.65 and final_diagnosis != "Pneumonia":
                  print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
                  final_diagnosis = "Pneumonia"
                  averaged_probs["Pneumonia"] = 0.85
