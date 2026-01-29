@@ -88,26 +88,41 @@ def apply_bandpass_filter(waveform, sr=16000):
 
 def count_transients_lite(y_chunk):
     """
-    The 'Pop Counter'. Detects sudden spikes > 10% of peak volume.
-    Solves the 'Masking' problem where loud breath hides crackles.
+    Advanced 'Jerk' Detector. 
+    Uses the 2nd Derivative of the envelope to find micro-explosions (crackles)
+    hidden inside loud breathing.
     """
     try:
+        # 1. Absolute Amplitude
         y_abs = np.abs(y_chunk)
-        window_size = 160
+        
+        # 2. Ultra-Tight Envelope (5ms window) - Keeps the sharp edges
+        window_size = 80 
         cumsum = np.cumsum(np.insert(y_abs, 0, 0))
         envelope = (cumsum[window_size:] - cumsum[:-window_size]) / window_size
         
-        delta = np.diff(envelope)
-        peak_amp = np.max(envelope)
-        if peak_amp < 0.005: return 0 
+        # 3. The "Jerk" (Acceleration of Volume)
+        # First diff = Velocity, Second diff = Acceleration
+        velocity = np.diff(envelope)
+        acceleration = np.diff(velocity)
         
-        thresh = peak_amp * 0.10 # Sensitive threshold
-        block_size = 320 # 20ms blocks
-        n_blocks = len(delta) // block_size
+        # 4. Spike Detection
+        # A crackle is a moment of extreme acceleration (instant ON)
+        # We ignore the breath because breaths accelerate slowly.
+        peak_accel = np.max(np.abs(acceleration))
+        
+        # Threshold: 15% of the max acceleration in this chunk
+        thresh = peak_accel * 0.15 
+        
+        # 5. Count distinct events (de-bounce 20ms)
+        block_size = 320 
+        n_blocks = len(acceleration) // block_size
         count = 0
         for i in range(n_blocks):
-            if np.max(delta[i*block_size : (i+1)*block_size]) > thresh:
+            block = acceleration[i*block_size : (i+1)*block_size]
+            if np.max(block) > thresh:
                 count += 1
+                
         return count
     except:
         return 0
@@ -132,7 +147,7 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         
         mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
         
-        # KEY FEATURE: Transient Count (Pops)
+        # NEW: Advanced Transient Counter
         transients = count_transients_lite(y_chunk)
         
         return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients
@@ -204,20 +219,15 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients = extract_physics_features_lite(chunk)
                 total_transients += transients
 
-                # 1. HYBRID PNEUMONIA CHECK (Aggressive but Smart)
-                # Old Model Logic: ZCR > 0.20 + Kurt > 2.0 (Catch rough sounds)
-                # New Model Logic: Transients > 4 (Catch pops even if hidden)
-                # We combine them with OR. If EITHER is true, we flag Pneumonia.
-                
-                is_rough = (zcr > 0.20 and kurt > 1.5)
-                is_popping = (transients > 4)
-                
-                if (is_rough or is_popping) and harmonic_ratio < 0.6: 
-                    # Note: We added 'harmonic_ratio < 0.6' to protect CLEAR musical asthma from this check.
+                # 1. ABSOLUTE PNEUMONIA CHECK (The "Sniper" Veto)
+                # If we detect > 3 distinct micro-explosions (transients), it IS Pneumonia.
+                # We do not care about ZCR or Kurtosis here, because loud breath hides those.
+                # We trust the acceleration physics.
+                if transients >= 3:
                     chunk_diagnosis = "Pneumonia"
                     chunk_severity = 3
-                    winner_prob = 0.90 
-                    print(f"   ⚠️ HIERARCHY: Crackle Detect (ZCR={zcr:.2f}, Pops={transients}) -> Forcing Pneumonia.")
+                    winner_prob = 0.95 
+                    print(f"   ⚠️ HIERARCHY: Detected {transients} Crackle/Pops -> Forcing Pneumonia.")
                     probs_list[-1] = torch.tensor([0.05, 0.05, 0.90]) 
                     physics_override = True
                 
@@ -227,16 +237,16 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
                     
-                    # 🛡️ ASTHMA SANITY CHECK (The "Safety Net")
+                    # 🛡️ ASTHMA SANITY CHECK
                     if chunk_diagnosis == "Asthma":
                         veto_triggered = False
                         
-                        # Veto A: Pure Noise (Spectral Flatness > 0.25)
-                        if spectral_flatness > 0.25: veto_triggered = True
+                        # Veto A: Pure Noise (Spectral Flatness > 0.28)
+                        if spectral_flatness > 0.28: veto_triggered = True
                             
-                        # Veto B: Hidden Crackles (Transients > 2)
-                        # Even if AI says Asthma, if it pops > 2 times, it's Pneumonia.
-                        elif transients > 2: veto_triggered = True
+                        # Veto B: Hidden Crackles (Transients >= 2)
+                        # Asthma is smooth. If it popped even twice, it's suspicious.
+                        elif transients >= 2: veto_triggered = True
 
                         if veto_triggered:
                             print(f"   🛡️ VETO: AI=Asthma, but Physics (Flat={spectral_flatness:.2f}, Pops={transients}) indicates Crackles -> Switching to Pneumonia.")
@@ -285,9 +295,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
-            # GLOBAL AGGRESSION CHECK (The "Old Model" Spirit)
-            # If we saw a LOT of popping across the whole file, it's Pneumonia.
-            if total_transients > 6 and final_diagnosis != "Pneumonia":
+            # GLOBAL TRANSIENT CHECK
+            # If total pops across file > 5, it is Pneumonia.
+            if total_transients > 5 and final_diagnosis != "Pneumonia":
                  print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
                  final_diagnosis = "Pneumonia"
                  averaged_probs["Pneumonia"] = 0.85
