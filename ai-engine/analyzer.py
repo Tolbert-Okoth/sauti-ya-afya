@@ -89,9 +89,14 @@ def apply_bandpass_filter(waveform, sr=16000):
         return waveform
 
 def count_transients_lite(y_chunk):
+    """
+    Dynamic 'Crest Factor' Detector.
+    Calculates the 'Average Turbulence' of the breath and only flags
+    events that spike significantly (5x) above that average.
+    Eliminates false positives from rough/normal breathing.
+    """
     try:
         y_abs = np.abs(y_chunk)
-        # 🛡️ QUIET SHIELD: If signal is very quiet, assume Normal.
         if np.max(y_abs) < 0.02: return 0
 
         window_size = 80 
@@ -100,21 +105,26 @@ def count_transients_lite(y_chunk):
         
         velocity = np.diff(envelope)
         acceleration = np.diff(velocity)
+        abs_accel = np.abs(acceleration)
         
-        peak_accel = np.max(np.abs(acceleration))
+        # 1. Calculate the "Noise Floor" of the breath (Mean Acceleration)
+        avg_turbulence = np.mean(abs_accel)
         
-        # 🛡️ NOISE FLOOR: Ignore tiny static pops
-        thresh = max(peak_accel * 0.12, 0.003) 
+        # 2. DYNAMIC THRESHOLD
+        # A pop must be 5 times sharper than the average breath texture.
+        # We also enforce a hard floor (0.004) to ignore silence.
+        thresh = max(avg_turbulence * 5.0, 0.004)
         
         block_size = 320 
         n_blocks = len(acceleration) // block_size
         count = 0
         for i in range(n_blocks):
-            if np.max(acceleration[i*block_size : (i+1)*block_size]) > thresh:
+            # Check for a spike in this 20ms block
+            if np.max(abs_accel[i*block_size : (i+1)*block_size]) > thresh:
                 count += 1
         
-        # 🛡️ ARTIFACT SHIELD: If > 30 pops, it's likely electrical noise, not lungs.
-        if count > 30: return 0 
+        # Artifact Filter
+        if count > 35: return 0 
         return count
     except:
         return 0
@@ -199,7 +209,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
         for idx, chunk in enumerate(chunks):
             rms = calculate_rms(chunk)
-            # 🛡️ QUIET CHECK: Skip chunks that are basically silence
             if rms < 0.005: continue 
 
             img = generate_spectrogram(chunk)
@@ -211,30 +220,26 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients = extract_physics_features_lite(chunk)
                 total_transients += transients
 
-                # Get AI Opinion First
                 winner_idx = torch.argmax(probs).item()
                 chunk_diagnosis = CLASSES[winner_idx]
                 winner_prob = float(probs[winner_idx])
 
-                # 🛡️ THE NORMALCY SHIELD 🛡️
+                # 🛡️ THE NORMALCY SHIELD
                 # If AI is > 85% sure it is Normal, we raise the 'Pneumonia Bar' significantly.
-                # We don't want a single mic bump to ruin a perfect Normal diagnosis.
                 if chunk_diagnosis == "Normal" and winner_prob > 0.85:
-                    pneumonia_pop_threshold = 8  # Require MASSIVE popping to override
-                    pneumonia_harm_limit = 0.5   # Require it to be non-musical
+                    pneumonia_pop_threshold = 8 
+                    pneumonia_harm_limit = 0.5 
                 else:
-                    pneumonia_pop_threshold = 5  # Standard threshold
-                    pneumonia_harm_limit = 0.65  # Standard limit
+                    pneumonia_pop_threshold = 5  
+                    pneumonia_harm_limit = 0.65 
 
                 # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 
-                # Tier 1: Strong Crackles
                 if transients >= pneumonia_pop_threshold:
                     print(f"   ⚠️ HIERARCHY: High Confidence Crackles ({transients} pops) -> Forcing Pneumonia.")
                     force_pneumonia = True
                 
-                # Tier 2: Moderate Crackles (Only if NOT shielded by Normalcy)
                 elif transients >= 3 and harmonic_ratio < pneumonia_harm_limit and chunk_diagnosis != "Normal":
                     print(f"   ⚠️ HIERARCHY: Moderate Crackles ({transients} pops, Harm={harmonic_ratio:.2f}) -> Forcing Pneumonia.")
                     force_pneumonia = True
@@ -247,7 +252,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     physics_override = True
                     pneumonia_chunks_detected += 1
                 
-                # 2. STANDARD AI PREDICTION (No Override)
+                # 2. STANDARD AI PREDICTION
                 else:
                     if chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
                         pneumonia_chunks_detected += 1
@@ -310,7 +315,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
             # GLOBAL TRANSIENT CHECK
-            # We raise this to 8 to respect the Normalcy Shield globally
+            # Normal Shield applies here too
             avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
             if total_transients > 8 and avg_harm < 0.65 and final_diagnosis != "Pneumonia":
                  print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
