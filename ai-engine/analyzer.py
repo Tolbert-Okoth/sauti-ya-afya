@@ -48,7 +48,7 @@ SYMPTOM_RISK_BONUS = {
     'wheeze': 0.25, 'crackle': 0.20  
 }
 
-CRACKLE_WEIGHT = 0.5
+CRACKLE_WEIGHT = 0.6
 
 model.classifier = torch.nn.Sequential(
     torch.nn.Dropout(0.2),
@@ -89,13 +89,8 @@ def apply_bandpass_filter(waveform, sr=16000):
         return waveform
 
 def count_transients_lite(y_chunk):
-    """
-    Advanced 'Jerk' Detector with Absolute Noise Floor.
-    """
     try:
         y_abs = np.abs(y_chunk)
-        # 1. Amplitude Gate: If signal is quiet, it can't be pneumonia.
-        # Normal breath is usually < 0.02 RMS.
         if np.max(y_abs) < 0.02: return 0
 
         window_size = 80 
@@ -107,10 +102,10 @@ def count_transients_lite(y_chunk):
         
         peak_accel = np.max(np.abs(acceleration))
         
-        # 2. THE FIX: Absolute Minimum Threshold (0.003)
-        # Even if relative threshold is low, we demand at least 0.003 units of "Jerk".
-        # This ignores static and soft breath texture.
-        thresh = max(peak_accel * 0.25, 0.003) 
+        # 🛡️ TUNED SENSITIVITY: 
+        # Lowered relative factor (0.20 -> 0.15) to catch soft crackles
+        # Maintained absolute floor (0.003) to prevent static noise false alarms
+        thresh = max(peak_accel * 0.15, 0.003) 
         
         block_size = 320 
         n_blocks = len(acceleration) // block_size
@@ -119,10 +114,7 @@ def count_transients_lite(y_chunk):
             if np.max(acceleration[i*block_size : (i+1)*block_size]) > thresh:
                 count += 1
         
-        # 3. Sanity Cap: Real crackles rarely exceed 25 per 5s (5Hz).
-        # If we see 60+, it's likely just electrical noise/interference.
         if count > 30: return 0 
-        
         return count
     except:
         return 0
@@ -203,6 +195,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         
         physics_override = False
         total_transients = 0
+        pneumonia_chunks_detected = 0 # Track how many chunks were explicitly Pneumonia
 
         for idx, chunk in enumerate(chunks):
             rms = calculate_rms(chunk)
@@ -220,14 +213,10 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 
-                # Tier 1: Strong Crackles (Requires 5+ significant pops)
-                if transients >= 5:
+                if transients >= 6:
                     print(f"   ⚠️ HIERARCHY: High Confidence Crackles ({transients} pops) -> Forcing Pneumonia.")
                     force_pneumonia = True
-                    
-                # Tier 2: Subtle Crackles (Requires 3+ pops AND Non-Musicality)
-                # If it's musical (Harm > 0.6), we assume the 'pops' are just vibrato/artifacts.
-                elif transients >= 3 and harmonic_ratio < 0.60:
+                elif transients >= 3 and harmonic_ratio < 0.65:
                     print(f"   ⚠️ HIERARCHY: Moderate Crackles ({transients} pops, Harm={harmonic_ratio:.2f}) -> Forcing Pneumonia.")
                     force_pneumonia = True
 
@@ -237,6 +226,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     winner_prob = 0.90 
                     probs_list[-1] = torch.tensor([0.05, 0.05, 0.90]) 
                     physics_override = True
+                    pneumonia_chunks_detected += 1
                 
                 # 2. STANDARD AI PREDICTION
                 else:
@@ -244,23 +234,23 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
                     
+                    if chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
+                        pneumonia_chunks_detected += 1
+
                     # 🛡️ ASTHMA SANITY CHECK
                     if chunk_diagnosis == "Asthma":
                         veto_triggered = False
-                        
-                        # Veto A: Pure Noise (Spectral Flatness > 0.30)
-                        if spectral_flatness > 0.30: veto_triggered = True
-                            
-                        # Veto B: Hidden Crackles (Transients > 2)
+                        if spectral_flatness > 0.35: veto_triggered = True
                         elif transients > 2: veto_triggered = True
 
                         if veto_triggered:
-                            print(f"   🛡️ VETO: AI=Asthma, but Physics (Flat={spectral_flatness:.2f}, Pops={transients}) indicates Crackles -> Switching to Pneumonia.")
+                            print(f"   🛡️ VETO: AI=Asthma, but Physics (Flat={spectral_flatness:.2f}, Pops={transients}) indicates Crackles.")
                             chunk_diagnosis = "Pneumonia"
                             chunk_severity = 3
                             winner_prob = 0.85 
                             probs_list[-1] = torch.tensor([0.10, 0.05, 0.85]) 
                             physics_override = True
+                            pneumonia_chunks_detected += 1
                         else:
                             chunk_severity = 2 
                     
@@ -275,42 +265,48 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
                 if chunk_severity > highest_severity:
                     highest_severity = chunk_severity
-                    final_diagnosis = chunk_diagnosis
         
         if valid_chunks == 0:
             final_diagnosis = "Inconclusive"
         else:
             if probs_list:
+                # Calculate simple average for biomarkers
                 avg_probs_tensor = torch.mean(torch.stack(probs_list), dim=0)
                 if avg_probs_tensor.dim() > 1: avg_probs_tensor = avg_probs_tensor.squeeze()
-
                 averaged_probs = {k: float(v) for k, v in zip(CLASSES, avg_probs_tensor)}
-                new_winner = max(averaged_probs, key=averaged_probs.get)
-                max_prob = averaged_probs[new_winner]
                 
-                if physics_override:
-                     if SEVERITY_SCORE.get(new_winner, 0) >= highest_severity:
-                         final_diagnosis = new_winner
-                     else:
-                         if highest_severity == 3: final_diagnosis = "Pneumonia"
-                         elif highest_severity == 2: final_diagnosis = "Asthma"
+                # 3. CONSENSUS LOGIC (Severity Priority)
+                # Instead of blind averaging, we prioritize the worst condition detected
                 
+                # If Pneumonia was detected in ANY chunk with high confidence/veto, it sticks.
+                if pneumonia_chunks_detected > 0:
+                    final_diagnosis = "Pneumonia"
+                    # Boost confidence manually if average washed it out
+                    if averaged_probs["Pneumonia"] < 0.5:
+                        averaged_probs["Pneumonia"] = 0.75
+                        averaged_probs["Asthma"] = min(averaged_probs["Asthma"], 0.20)
+                
+                # If Physics Override happened (anywhere), we trust the override.
+                elif physics_override:
+                     if highest_severity == 3: final_diagnosis = "Pneumonia"
+                     elif highest_severity == 2: final_diagnosis = "Asthma"
+                     else: final_diagnosis = "Normal" # Fallback
+                
+                # Standard soft voting for non-conflicting cases
                 else:
+                    new_winner = max(averaged_probs, key=averaged_probs.get)
+                    max_prob = averaged_probs[new_winner]
                     if max_prob < 0.50: final_diagnosis = "Normal" 
                     else: final_diagnosis = new_winner
 
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
             # GLOBAL TRANSIENT CHECK
-            # If total pops > 8 and audio wasn't super musical, force Pneumonia.
             avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
-            
             if total_transients > 8 and avg_harm < 0.65 and final_diagnosis != "Pneumonia":
                  print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
                  final_diagnosis = "Pneumonia"
                  averaged_probs["Pneumonia"] = 0.85
-                 averaged_probs["Asthma"] = 0.10
-                 averaged_probs["Normal"] = 0.05
 
         if symptoms:
             matched = []
