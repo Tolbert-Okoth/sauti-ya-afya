@@ -102,10 +102,7 @@ def count_transients_lite(y_chunk):
         
         peak_accel = np.max(np.abs(acceleration))
         
-        # 🛡️ TUNED SENSITIVITY: 
-        # Raised Multiplier (5x -> 7x) to ignore breath texture
-        # Raised Absolute Floor (0.003 -> 0.005) to ignore mic floor
-        thresh = max(peak_accel * 0.15, 0.005) 
+        thresh = max(peak_accel * 0.12, 0.003) 
         
         block_size = 320 
         n_blocks = len(acceleration) // block_size
@@ -114,7 +111,7 @@ def count_transients_lite(y_chunk):
             if np.max(acceleration[i*block_size : (i+1)*block_size]) > thresh:
                 count += 1
         
-        if count > 40: return 0 
+        if count > 30: return 0 
         return count
     except:
         return 0
@@ -216,7 +213,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
                 # 🛡️ THE NORMALCY SHIELD
                 if chunk_diagnosis == "Normal" and winner_prob > 0.85:
-                    pneumonia_pop_threshold = 9 # Raised slightly
+                    pneumonia_pop_threshold = 9 
                     pneumonia_harm_limit = 0.5 
                 else:
                     pneumonia_pop_threshold = 5  
@@ -225,8 +222,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 
-                # Check for "Crispness" (ZCR or Kurtosis) to filter mic bumps
-                is_crisp = (zcr > 0.10 or kurt > 1.5)
+                # Check for "Crispness" (ZCR or Kurtosis) to filter mic bumps/normal breath
+                # RAISED THRESHOLDS: ZCR > 0.17 (was 0.10) / Kurt > 2.5 (was 1.5)
+                is_crisp = (zcr > 0.17 or kurt > 2.5)
 
                 if transients >= pneumonia_pop_threshold and is_crisp:
                     print(f"   ⚠️ HIERARCHY: Crisp Crackles ({transients} pops, ZCR={zcr:.2f}) -> Forcing Pneumonia.")
@@ -321,7 +319,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
             # GLOBAL TRANSIENT CHECK
-            # Must also pass crispness check implicitly via chunk logic
             avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
             if total_transients > 10 and avg_harm < 0.65 and final_diagnosis != "Pneumonia":
                  print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
