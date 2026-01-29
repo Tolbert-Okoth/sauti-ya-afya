@@ -49,7 +49,7 @@ SYMPTOM_RISK_BONUS = {
 }
 
 # NEW: Crackle weight to emphasize as key differentiator
-CRACKLE_WEIGHT = 0.6 # Increased weight
+CRACKLE_WEIGHT = 0.6 
 
 model.classifier = torch.nn.Sequential(
     torch.nn.Dropout(0.2),
@@ -100,7 +100,7 @@ def detect_events(y_chunk, sr=16000, min_duration=0.005, energy_threshold=0.01):
     in_event = False
     start_idx = None
     
-    # Relative threshold: 15dB below peak (More sensitive to quiet crackles)
+    # Sensitive Threshold: 15dB below peak to catch soft crackles
     max_vol = np.max(rms)
     threshold = max_vol - 15 
     
@@ -127,7 +127,7 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         geom_mean = np.exp(np.mean(log_spectrum))
         arith_mean = np.mean(spectrum)
         
-        # Spectral Flatness: 1.0 = Noise (Crackles), 0.0 = Tone (Asthma)
+        # Spectral Flatness: 1.0 = White Noise, 0.0 = Pure Sine Wave
         spectral_flatness = geom_mean / arith_mean
         harmonic_ratio = 1.0 - spectral_flatness
         
@@ -141,6 +141,7 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         
         durations = detect_events(y_chunk, sr)
         if not durations:
+            # If no events, assume silence or continuous noise
             return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, 0.0, 0.0
         
         avg_duration = np.mean(durations)
@@ -217,10 +218,10 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, avg_duration, crackle_frac = extract_physics_features_lite(chunk)
                 crackle_fracs.append(crackle_frac)
 
-                # 1. PNEUMONIA PHYSICS CHECK (The "Zero Tolerance" Veto)
-                # Lowered Crackle Threshold to 0.2 (20% pops = Pneumonia)
-                # Lowered ZCR to 0.1 (Wet crackles are basier)
-                if (zcr > 0.10 or kurt > 1.5) and crackle_frac > 0.20:
+                # 1. PNEUMONIA PHYSICS CHECK (Positive Veto - More Sensitive)
+                # Lowered ZCR to 0.15 (Wet crackles)
+                # Lowered Crackle Frac to 0.15 (Even a few pops matter)
+                if (zcr > 0.15 or kurt > 1.5) and crackle_frac > 0.15:
                     chunk_diagnosis = "Pneumonia"
                     chunk_severity = 3
                     winner_prob = 0.90 
@@ -234,19 +235,19 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
                     
-                    # 🛡️ ASTHMA SANITY CHECK
+                    # 🛡️ ASTHMA SANITY CHECK (The "Purity Test" - Strict)
                     if chunk_diagnosis == "Asthma":
                         veto_triggered = False
                         
-                        # Veto A: High Scratchiness
-                        if zcr > 0.25: veto_triggered = True
+                        # Veto A: Too Scratchy (ZCR > 0.20)
+                        if zcr > 0.20: veto_triggered = True
                             
-                        # Veto B: Short Duration Events (Crackles) - Critical for Pneumonia mismatch
-                        elif avg_duration > 0.005 and avg_duration < 0.05: veto_triggered = True
+                        # Veto B: Too Noisy (Flatness > 0.25) 
+                        # Pure Asthma is tonal (<0.15). >0.25 is noise or crackles.
+                        elif spectral_flatness > 0.25: veto_triggered = True
 
-                        # Veto C: Too much broadband noise (Flatness)
-                        # Real Asthma is tonal (Flatness < 0.2). If > 0.3, it's noise/breath.
-                        elif spectral_flatness > 0.3: veto_triggered = True
+                        # Veto C: Too Choppy (Duration < 0.08s) - IF valid duration exists
+                        elif avg_duration > 0.005 and avg_duration < 0.08: veto_triggered = True
 
                         if veto_triggered:
                             print(f"   🛡️ VETO: AI=Asthma, but Physics (ZCR={zcr:.2f}, Flat={spectral_flatness:.2f}, Dur={avg_duration:.3f}s) -> Switching to Pneumonia.")
@@ -298,8 +299,8 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             # Global Crackle Bonus
             if crackle_fracs:
                 avg_crackle_frac = np.mean(crackle_fracs)
-                # If 20% of the entire audio was popping, push Pneumonia
-                if avg_crackle_frac > 0.20:
+                # If 15% of the entire audio was popping, push Pneumonia
+                if avg_crackle_frac > 0.15:
                     crackle_bonus = avg_crackle_frac * CRACKLE_WEIGHT
                     print(f"   ⚠️ Global Crackle Bonus: +{crackle_bonus:.2f}")
                     averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + crackle_bonus)
