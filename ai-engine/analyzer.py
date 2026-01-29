@@ -134,7 +134,7 @@ def predict_with_tta(model, input_tensor):
     with torch.no_grad():
         outputs = model(batch)
         probs = F.softmax(outputs, dim=1)
-        avg_probs = torch.mean(probs, dim=0) # Returns 1D tensor [3]
+        avg_probs = torch.mean(probs, dim=0)
     return avg_probs
 
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
@@ -172,23 +172,17 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 
                 zcr, harmonic_ratio, kurt, ent, mad = extract_physics_features_lite(chunk)
                 
-                # 1. Pneumonia Check (Physics Veto)
+                # 1. Pneumonia Check (Physics Veto) - KEEPING THIS (Crackles are hard for AI)
                 if zcr > 0.40 and rms > 0.02 and kurt > 3.0:
                     winner_idx = 2; winner_prob = 0.95; chunk_diagnosis = "Pneumonia"
                     print(f"   ⚠️ HIERARCHY: Extreme Crackles (ZCR={zcr:.2f}) -> Forcing Pneumonia.")
-                    # FIX: Removed double brackets to match AI tensor shape [3]
                     probs_list[-1] = torch.tensor([0.05, 0.05, 0.95]) 
                     physics_override = True
                     chunk_severity = 3
                 
-                # 2. Asthma Check (Reinstate, Strict)
-                elif harmonic_ratio > 0.85 and zcr < 0.20:
-                    winner_idx = 0; winner_prob = 0.95; chunk_diagnosis = "Asthma"
-                    print(f"   ⚠️ HIERARCHY: Pure Harmonics (Ratio={harmonic_ratio:.2f}) -> Forcing Asthma.")
-                    # FIX: Removed double brackets to match AI tensor shape [3]
-                    probs_list[-1] = torch.tensor([0.95, 0.05, 0.05])
-                    physics_override = True
-                    chunk_severity = 2 
+                # 2. Asthma Check - DELETED!
+                # We removed the Physics Veto for Asthma. We trust the AI model now.
+                # The AI is smart enough to see the difference between a beep and a wheeze.
                 
                 # 3. Standard AI
                 else:
@@ -212,16 +206,16 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         else:
             # SOFT VOTING (The Consensus)
             if probs_list:
-                # 1. Calculate Average Probability across all chunks
-                # Now safe because all tensors are 1D [3]
                 avg_probs_tensor = torch.mean(torch.stack(probs_list), dim=0)
-                
+                if avg_probs_tensor.dim() > 1: avg_probs_tensor = avg_probs_tensor.squeeze()
+
                 averaged_probs = {k: float(v) for k, v in zip(CLASSES, avg_probs_tensor)}
                 new_winner = max(averaged_probs, key=averaged_probs.get)
                 max_prob = averaged_probs[new_winner]
                 
-                # 3. CONSENSUS LOGIC
+                # CONSENSUS LOGIC
                 if physics_override:
+                     # If physics forced Pneumonia, we likely keep it unless logic says otherwise
                      if SEVERITY_SCORE.get(new_winner, 0) >= highest_severity:
                          final_diagnosis = new_winner
                      else:
