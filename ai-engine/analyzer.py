@@ -172,7 +172,8 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 
                 zcr, harmonic_ratio, kurt, ent, mad = extract_physics_features_lite(chunk)
                 
-                # 1. PNEUMONIA PHYSICS CHECK (Veto)
+                # 1. PNEUMONIA PHYSICS CHECK (Positive Veto)
+                # If ZCR/Kurtosis is high, it is CRACKLES. Trust physics over AI.
                 if zcr > 0.20 and rms > 0.02 and kurt > 2.0:
                     chunk_diagnosis = "Pneumonia"
                     chunk_severity = 3
@@ -187,18 +188,21 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     chunk_diagnosis = CLASSES[winner_idx]
                     winner_prob = float(probs[winner_idx])
                     
-                    # 🛡️ ASTHMA SANITY CHECK (Revised)
+                    # 🛡️ ASTHMA SANITY CHECK (The "Purity Test")
                     if chunk_diagnosis == "Asthma":
-                        # FIX: Only switch to Pneumonia if ZCR indicates REAL CRACKLES (>0.25).
-                        # We removed the 'Entropy' check because breathy asthma was triggering it falsely.
-                        if zcr > 0.25: 
-                            print(f"   🛡️ VETO: AI said Asthma, but Physics (ZCR={zcr:.2f}) indicates Crackles -> Switching to Pneumonia.")
+                        # CRITICAL FIX: Asthma must be MUSICAL (High Harmonic Ratio) and SMOOTH (Low ZCR).
+                        # If harmonic_ratio < 0.5, it's NOT a wheeze (it's noise/crackles).
+                        # If ZCR > 0.15, it's too scratchy to be a wheeze.
+                        
+                        if harmonic_ratio < 0.50 or zcr > 0.15:
+                            print(f"   🛡️ VETO: AI said Asthma, but Physics (Harm={harmonic_ratio:.2f}, ZCR={zcr:.2f}) indicates Noise/Crackles -> Switching to Pneumonia.")
                             chunk_diagnosis = "Pneumonia"
                             chunk_severity = 3
                             winner_prob = 0.85 
                             probs_list[-1] = torch.tensor([0.10, 0.05, 0.85]) 
                             physics_override = True
                         else:
+                            # It passed the Purity Test! It is real Asthma.
                             chunk_severity = 2 
                     
                     elif chunk_diagnosis == "Normal": 
@@ -221,6 +225,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         if valid_chunks == 0:
             final_diagnosis = "Inconclusive"
         else:
+            # SOFT VOTING (The Consensus)
             if probs_list:
                 avg_probs_tensor = torch.mean(torch.stack(probs_list), dim=0)
                 if avg_probs_tensor.dim() > 1: avg_probs_tensor = avg_probs_tensor.squeeze()
@@ -229,7 +234,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 new_winner = max(averaged_probs, key=averaged_probs.get)
                 max_prob = averaged_probs[new_winner]
                 
+                # CONSENSUS LOGIC
                 if physics_override:
+                     # If physics forced Pneumonia, we likely keep it unless logic says otherwise
                      if SEVERITY_SCORE.get(new_winner, 0) >= highest_severity:
                          final_diagnosis = new_winner
                      else:
