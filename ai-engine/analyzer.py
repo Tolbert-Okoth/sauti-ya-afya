@@ -89,12 +89,6 @@ def apply_bandpass_filter(waveform, sr=16000):
         return waveform
 
 def count_transients_lite(y_chunk):
-    """
-    Dynamic 'Crest Factor' Detector.
-    Calculates the 'Average Turbulence' of the breath and only flags
-    events that spike significantly (5x) above that average.
-    Eliminates false positives from rough/normal breathing.
-    """
     try:
         y_abs = np.abs(y_chunk)
         if np.max(y_abs) < 0.02: return 0
@@ -105,26 +99,22 @@ def count_transients_lite(y_chunk):
         
         velocity = np.diff(envelope)
         acceleration = np.diff(velocity)
-        abs_accel = np.abs(acceleration)
         
-        # 1. Calculate the "Noise Floor" of the breath (Mean Acceleration)
-        avg_turbulence = np.mean(abs_accel)
+        peak_accel = np.max(np.abs(acceleration))
         
-        # 2. DYNAMIC THRESHOLD
-        # A pop must be 5 times sharper than the average breath texture.
-        # We also enforce a hard floor (0.004) to ignore silence.
-        thresh = max(avg_turbulence * 5.0, 0.004)
+        # 🛡️ TUNED SENSITIVITY
+        # Lowered relative factor (0.15 -> 0.12) to catch soft crackles.
+        # Absolute floor 0.003
+        thresh = max(peak_accel * 0.12, 0.003) 
         
         block_size = 320 
         n_blocks = len(acceleration) // block_size
         count = 0
         for i in range(n_blocks):
-            # Check for a spike in this 20ms block
-            if np.max(abs_accel[i*block_size : (i+1)*block_size]) > thresh:
+            if np.max(acceleration[i*block_size : (i+1)*block_size]) > thresh:
                 count += 1
         
-        # Artifact Filter
-        if count > 35: return 0 
+        if count > 30: return 0 
         return count
     except:
         return 0
@@ -225,7 +215,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 winner_prob = float(probs[winner_idx])
 
                 # 🛡️ THE NORMALCY SHIELD
-                # If AI is > 85% sure it is Normal, we raise the 'Pneumonia Bar' significantly.
                 if chunk_diagnosis == "Normal" and winner_prob > 0.85:
                     pneumonia_pop_threshold = 8 
                     pneumonia_harm_limit = 0.5 
@@ -239,7 +228,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 if transients >= pneumonia_pop_threshold:
                     print(f"   ⚠️ HIERARCHY: High Confidence Crackles ({transients} pops) -> Forcing Pneumonia.")
                     force_pneumonia = True
-                
                 elif transients >= 3 and harmonic_ratio < pneumonia_harm_limit and chunk_diagnosis != "Normal":
                     print(f"   ⚠️ HIERARCHY: Moderate Crackles ({transients} pops, Harm={harmonic_ratio:.2f}) -> Forcing Pneumonia.")
                     force_pneumonia = True
@@ -257,22 +245,43 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     if chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
                         pneumonia_chunks_detected += 1
 
-                    # 🛡️ ASTHMA SANITY CHECK
+                    # 🛡️ ASTHMA SANITY CHECK (The "White Noise Trap" Fix)
                     if chunk_diagnosis == "Asthma":
                         veto_triggered = False
-                        if spectral_flatness > 0.35: veto_triggered = True
-                        elif transients > 2: veto_triggered = True
+                        
+                        # Veto A: Pure Noise (Flatness > 0.35)
+                        # CRITICAL: Only veto if it ALSO has some roughness or pops.
+                        # If it is flat but smooth (0 pops), it's just heavy breath -> Normal.
+                        
+                        if spectral_flatness > 0.35:
+                            if transients > 1: # If noisy AND popping
+                                veto_triggered = True
+                                new_diag = "Pneumonia"
+                            else: # If noisy but smooth (Heavy Breath)
+                                # Don't trigger veto, but maybe downgrade confidence
+                                # Or switch to Normal if really flat?
+                                # Let's switch to Normal to be safe.
+                                print(f"   ℹ️ INFO: AI=Asthma, but Sound is Flat ({spectral_flatness:.2f}) and Smooth (0 Pops). Likely Normal Breath.")
+                                chunk_diagnosis = "Normal"
+                                chunk_severity = 1
+                                winner_prob = 0.60
+                        
+                        elif transients > 2: 
+                            veto_triggered = True
+                            new_diag = "Pneumonia"
 
                         if veto_triggered:
                             print(f"   🛡️ VETO: AI=Asthma, but Physics (Flat={spectral_flatness:.2f}, Pops={transients}) indicates Crackles.")
-                            chunk_diagnosis = "Pneumonia"
+                            chunk_diagnosis = new_diag
                             chunk_severity = 3
                             winner_prob = 0.85 
                             probs_list[-1] = torch.tensor([0.10, 0.05, 0.85]) 
                             physics_override = True
                             pneumonia_chunks_detected += 1
                         else:
-                            chunk_severity = 2 
+                            # If we switched to Normal above, keep severity 1
+                            if chunk_diagnosis != "Normal":
+                                chunk_severity = 2 
                     
                     elif chunk_diagnosis == "Normal": chunk_severity = 1
                     elif winner_prob < 0.60: 
@@ -294,7 +303,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 if avg_probs_tensor.dim() > 1: avg_probs_tensor = avg_probs_tensor.squeeze()
                 averaged_probs = {k: float(v) for k, v in zip(CLASSES, avg_probs_tensor)}
                 
-                # 3. CONSENSUS LOGIC (Severity Priority)
+                # 3. CONSENSUS LOGIC
                 if pneumonia_chunks_detected > 0:
                     final_diagnosis = "Pneumonia"
                     if averaged_probs["Pneumonia"] < 0.5:
@@ -315,7 +324,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
             # GLOBAL TRANSIENT CHECK
-            # Normal Shield applies here too
+            # If total pops > 8 and it wasn't super musical, force Pneumonia.
             avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
             if total_transients > 8 and avg_harm < 0.65 and final_diagnosis != "Pneumonia":
                  print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
