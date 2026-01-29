@@ -237,11 +237,30 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     
                     # 🛡️ ASTHMA SANITY CHECK (The "Purity Test")
                     if chunk_diagnosis == "Asthma":
-                        # CRITICAL FIX: Asthma must be MUSICAL (High Harmonic) and SUSTAINED.
-                        # If events are too short (< 0.05s avg), it's likely crackles/noise, not wheeze.
-                        # If ZCR is high (> 0.20), it's too scratchy.
-                        if harmonic_ratio < 0.40 or zcr > 0.20 or (avg_duration > 0 and avg_duration < 0.05):
-                            print(f"   🛡️ VETO: AI said Asthma, but Physics (Harm={harmonic_ratio:.2f}, Dur={avg_duration:.3f}s) indicates Noise/Crackles -> Switching to Pneumonia.")
+                        # CRITICAL FIX: Only trigger Veto if we are SURE it is bad physics.
+                        # 1. Harmonic Ratio must be VALID (> 0) and low (< 0.40) to indicate noise.
+                        # 2. Duration must be VALID (> 0.005) and short (< 0.05) to indicate crackles.
+                        # If Avg Duration is 0.0 (no events detected), we DO NOT Veto. We trust the AI.
+                        
+                        veto_triggered = False
+                        
+                        # Veto Condition A: High Scratchiness (ZCR)
+                        if zcr > 0.20:
+                            veto_triggered = True
+                            print(f"   🛡️ VETO: AI=Asthma, but ZCR={zcr:.2f} (Scratchy).")
+                            
+                        # Veto Condition B: Short Duration Events (Crackles) - ONLY if valid duration
+                        elif avg_duration > 0.005 and avg_duration < 0.05:
+                            veto_triggered = True
+                            print(f"   🛡️ VETO: AI=Asthma, but Avg Dur={avg_duration:.3f}s (Too Short).")
+
+                        # Veto Condition C: Very Low Tonality (Pure Noise) - ONLY if valid
+                        elif harmonic_ratio > 0.0 and harmonic_ratio < 0.40:
+                            veto_triggered = True
+                            print(f"   🛡️ VETO: AI=Asthma, but Harm={harmonic_ratio:.2f} (Too Noisy).")
+
+                        if veto_triggered:
+                            print(f"   -> Switching to Pneumonia.")
                             chunk_diagnosis = "Pneumonia"
                             chunk_severity = 3
                             winner_prob = 0.85 
@@ -293,15 +312,12 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
-            # Apply global crackle bonus if many chunks had crackles
             if crackle_fracs:
                 avg_crackle_frac = np.mean(crackle_fracs)
                 if avg_crackle_frac > 0.3:
                     crackle_bonus = avg_crackle_frac * CRACKLE_WEIGHT
                     print(f"   ⚠️ Global Crackle Bonus: +{crackle_bonus:.2f}")
                     averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + crackle_bonus)
-                    
-                    # Re-evaluate winner after bonus
                     new_winner = max(averaged_probs, key=averaged_probs.get)
                     if SEVERITY_SCORE.get(new_winner, 0) >= SEVERITY_SCORE.get(final_diagnosis.replace("Suspected ", ""), 0):
                         final_diagnosis = new_winner
