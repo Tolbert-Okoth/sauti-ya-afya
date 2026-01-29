@@ -102,9 +102,6 @@ def count_transients_lite(y_chunk):
         
         peak_accel = np.max(np.abs(acceleration))
         
-        # 🛡️ TUNED SENSITIVITY
-        # Multiplier 7x (Dynamic Threshold)
-        # Absolute Floor 0.005
         thresh = max(peak_accel * 0.15, 0.005) 
         
         block_size = 320 
@@ -216,26 +213,24 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
                 # 🛡️ THE NORMALCY SHIELD
                 if chunk_diagnosis == "Normal" and winner_prob > 0.85:
-                    pneumonia_pop_threshold = 10 # Raised to 10 for Shielded chunks
+                    pneumonia_pop_threshold = 10 
                     pneumonia_harm_limit = 0.5 
                 else:
-                    pneumonia_pop_threshold = 7 # Base threshold raised to 7
+                    pneumonia_pop_threshold = 7 
                     pneumonia_harm_limit = 0.65 
 
                 # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 
-                # 🛡️ THE FRICTION CEILING (Crucial Fix for Angle Noise)
-                # If ZCR is > 0.19, it's likely friction/rubbing, not Pneumonia.
-                # We disable the veto for this specific chunk.
-                is_friction_noise = (zcr > 0.19)
+                # 🛡️ THE FRICTION CEILING (Bumped to 0.21 for Fine Crackle Safety)
+                # ZCR > 0.21 is almost certainly artifact/rubbing.
+                is_friction_noise = (zcr > 0.21)
                 
-                # Check for "Crispness" (ZCR or Kurtosis)
+                # Check for "Crispness"
                 is_crisp = (zcr > 0.15 or kurt > 2.5) 
 
                 if is_friction_noise:
-                     # Log a warning but DO NOT force Pneumonia
-                     print(f"   ⚠️ ARTIFACT: High Friction Detected (ZCR={zcr:.2f}). Ignoring Pops to prevent false positive.")
+                     print(f"   ⚠️ ARTIFACT: Extreme Friction (ZCR={zcr:.2f}). Ignoring Pops.")
                 else:
                     if transients >= pneumonia_pop_threshold and is_crisp:
                         print(f"   ⚠️ HIERARCHY: Crisp Crackles ({transients} pops, ZCR={zcr:.2f}) -> Forcing Pneumonia.")
@@ -267,12 +262,10 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                                 veto_triggered = True
                                 new_diag = "Pneumonia"
                             else: 
-                                # Downgrade to Normal
                                 print(f"   ℹ️ INFO: AI=Asthma, but Sound is Flat ({spectral_flatness:.2f}) and Smooth. Likely Normal Breath.")
                                 chunk_diagnosis = "Normal"
                                 chunk_severity = 1
                                 winner_prob = 0.60
-                                # ⚡ PATCH: Update the probability math so Consensus Logic sees Normal!
                                 probs_list[-1] = torch.tensor([0.20, 0.60, 0.20]) 
                         
                         elif transients > 2 and is_crisp and not is_friction_noise: 
@@ -331,7 +324,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
             # GLOBAL TRANSIENT CHECK
-            # If total pops > 10 and no Friction Warning, force Pneumonia.
             avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
             if total_transients > 10 and avg_harm < 0.65 and final_diagnosis != "Pneumonia":
                  print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
