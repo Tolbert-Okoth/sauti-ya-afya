@@ -40,7 +40,7 @@ const SmartRecorder = ({ onLogout }) => {
   const audioChunksRef = useRef([]);
   const animationRef = useRef(null);
 
-  // 🔹 DEBUG INPUT STYLE: High Visibility
+  // 🔹 INPUT STYLE: Matching Login Transparency
   const glassInputStyle = {
       background: 'rgba(255, 255, 255, 0.45)', 
       border: '1px solid rgba(255, 255, 255, 0.6)',
@@ -271,18 +271,20 @@ const SmartRecorder = ({ onLogout }) => {
   return (
     <div className="container-fluid p-0 d-flex justify-content-center">
       
-      {/* 🔴 DIAGNOSTIC MODE ACTIVATED:
-          1. Removed 'glass-card' class (to stop global CSS interference)
-          2. Added 'border-danger' (Red Border)
-          3. Set background to transparent explicitly
+      {/* 🟢 FINAL FIX: "GHOST MODE"
+          - No Red Border
+          - 5% White Opacity (0.05) - Adds just a hint of "card" shape
+          - No Blur (Relies on background blur)
+          - Keeps 'glass-card' class for shape/shadow, but overrides background
       */}
       <div 
-        className="w-100 shadow-lg border border-5 border-danger" 
+        className="glass-card w-100 shadow-lg" 
         style={{ 
             maxWidth: '1100px', 
             minHeight: '85vh', 
-            background: 'transparent', // 100% Clear
-            backdropFilter: 'none'     // No Blur
+            backdropFilter: 'none', 
+            background: 'rgba(255, 255, 255, 0.05)', 
+            border: '1px solid rgba(255, 255, 255, 0.2)'
         }}
       >
         <div className="p-3 p-md-5">
