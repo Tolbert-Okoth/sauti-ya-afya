@@ -109,10 +109,10 @@ def count_transients_tkeo(y_chunk):
         tkeo_abs = np.abs(tkeo_energy)
 
         # 4. Dynamic Thresholding (Crest Factor on Energy)
-        # We look for bursts that are 6x the average energy level.
-        # This is incredibly robust against "Hissy" breath noise.
+        # We look for bursts that are 8x (Raised from 6x) the average energy level.
+        # This prevents loud breathing (high avg energy) from triggering false positives.
         avg_energy = np.mean(tkeo_abs)
-        thresh = max(avg_energy * 6.0, 0.0005) # Floor to prevent detecting silence
+        thresh = max(avg_energy * 8.0, 0.0005) # Floor to prevent detecting silence
         
         # 5. Count Bursts (Block-wise)
         # We check 20ms blocks (320 samples)
@@ -233,14 +233,16 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     pneumonia_pop_threshold = 8 
                     pneumonia_harm_limit = 0.5 
                 else:
-                    pneumonia_pop_threshold = 5 # TKEO is precise, we can trust 5 pops
+                    pneumonia_pop_threshold = 5 
                     pneumonia_harm_limit = 0.65 
 
                 # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 
                 # Guards (The Spotters)
-                is_friction_noise = (zcr > 0.21)
+                # 🛡️ LOUD BREATH CEILING (Lowered to 0.18)
+                # Blocks Turbulence (0.19) but allows Real Crackles (0.15-0.17)
+                is_friction_noise = (zcr > 0.18) 
                 not_too_flat = (spectral_flatness < 0.42)
                 is_crisp = (zcr > 0.15) 
 
@@ -254,7 +256,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                      probs_list[-1] = torch.tensor([0.05, 0.90, 0.05]) 
                      
                 elif is_friction_noise:
-                     print(f"   ⚠️ ARTIFACT: Extreme Friction (ZCR={zcr:.2f}). Ignoring Pops.")
+                     print(f"   ⚠️ ARTIFACT: Extreme Friction/Turbulence (ZCR={zcr:.2f}). Ignoring Pops.")
                 else:
                     # TKEO + ZCR Logic
                     if transients >= pneumonia_pop_threshold and is_crisp and not_too_flat:
@@ -354,7 +356,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
-            # GLOBAL CHECK (12 Bursts)
+            # GLOBAL CHECK
             avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
             avg_flat = np.mean([extract_physics_features_lite(c, 16000)[2] for c in chunks]) if chunks else 0
             
