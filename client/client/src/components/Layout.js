@@ -1,7 +1,7 @@
 /* client/src/components/Layout.js */
 import React from 'react';
 import Sidebar from './Sidebar'; 
-// import { useTranslation } from '../hooks/useTranslation'; // Uncomment if using translation
+import Footer from './Footer'; // 🟢 Import Footer
 
 const Layout = ({ role, children, logout }) => {
   return (
@@ -9,13 +9,13 @@ const Layout = ({ role, children, logout }) => {
     <div className="glass-window d-flex">
       
       {/* SIDEBAR WRAPPER */}
-      {/* We keep this simple wrapper so Sidebar.css handles the fixed/relative positioning */}
       <div className="sidebar-wrapper">
         <Sidebar role={role} onLogout={logout} />
       </div>
 
       {/* 2. MAIN CONTENT AREA */}
-      <main className="flex-grow-1 mobile-content-wrapper" 
+      {/* Added 'd-flex flex-column' to organize content + footer */}
+      <main className="flex-grow-1 mobile-content-wrapper d-flex flex-column" 
             style={{ 
               position: 'relative', 
               height: '100%', 
@@ -23,10 +23,14 @@ const Layout = ({ role, children, logout }) => {
               width: '100%' 
             }}>
         
-        {/* Content */}
-        <div className="container-fluid p-3 p-md-4 pt-5 mt-4 mt-md-0">
+        {/* Content Wrapper - Added 'flex-grow-1' to push footer down */}
+        <div className="container-fluid p-3 p-md-4 pt-5 mt-4 mt-md-0 flex-grow-1">
           {children}
         </div>
+
+        {/* 🟢 FOOTER (Integrated at bottom of scrollable area) */}
+        <Footer />
+
       </main>
 
     </div>

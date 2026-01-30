@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   FaUserMd, FaChartPie, FaGlobeAfrica, FaCog, 
-  FaSignOutAlt, FaBars, FaTimes, FaUserInjured 
+  FaSignOutAlt, FaBars, FaTimes, FaUserInjured,
+  FaBook // 🟢 Added Icon
 } from 'react-icons/fa'; 
 import './Sidebar.css'; 
 
@@ -14,29 +15,26 @@ const Sidebar = ({ role, onLogout }) => {
   const closeMenu = () => setIsOpen(false);
 
   // 🔹 GHOST MODE STYLE (Matches SmartRecorder.js)
-  // 1. 5% Opacity background (blends with main window)
-  // 2. Right border for subtle separation
   const sidebarStyle = {
     background: 'rgba(255, 255, 255, 0.05)',
     borderRight: '1px solid rgba(255, 255, 255, 0.2)',
-    backdropFilter: 'none', // Rely on parent window blur
+    backdropFilter: 'none', 
   };
 
   return (
     <>
-      {/* 📱 HAMBURGER BUTTON (Visible only on mobile via CSS) */}
+      {/* 📱 HAMBURGER BUTTON */}
       <button className="mobile-toggle-btn" onClick={toggle}>
         {isOpen ? <FaTimes /> : <FaBars />}
       </button>
 
-      {/* 🌑 BACKDROP OVERLAY (Visible only when open on mobile) */}
+      {/* 🌑 BACKDROP OVERLAY */}
       <div 
         className={`mobile-overlay ${isOpen ? 'open' : ''}`} 
         onClick={closeMenu}
       />
 
       {/* SIDEBAR CONTAINER */}
-      {/* Added style={sidebarStyle} to enforce transparency */}
       <div className={`sidebar ${isOpen ? 'open' : ''}`} style={sidebarStyle}>
         
         {/* LOGO AREA */}
@@ -83,6 +81,11 @@ const Sidebar = ({ role, onLogout }) => {
           )}
           
           <div className="my-2 border-top" style={{borderColor: 'rgba(255,255,255,0.2)'}}></div>
+
+          {/* 🟢 NEW: USER GUIDE LINK */}
+          <NavLink to="/guide" onClick={closeMenu} className="nav-link">
+            <FaBook className="me-3" /> User Guide
+          </NavLink>
 
           <NavLink to="/settings" onClick={closeMenu} className="nav-link">
             <FaCog className="me-3" /> Settings

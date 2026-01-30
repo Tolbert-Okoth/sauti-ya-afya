@@ -17,6 +17,7 @@ import AdminDashboard from './components/AdminDashboard';
 import Analytics from './components/Analytics';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import UserGuide from './components/UserGuide'; // 🟢 Added Import
 
 // SETTINGS
 import SettingsHub from './components/SettingsHub';
@@ -92,7 +93,6 @@ function App() {
                 !userRole ? (
                   <Login setRole={setUserRole} />
                 ) : (
-                  // ✅ FIX: Robust Redirect Logic
                   <Navigate to={
                     userRole === 'CHW' ? "/chw" : 
                     userRole === 'DOCTOR' ? "/doctor" : 
@@ -144,6 +144,16 @@ function App() {
               userRole === 'ADMIN' ? (
                 <Layout role="ADMIN" logout={logout}>
                   <AdminDashboard />
+                </Layout>
+              ) : <Navigate to="/" />
+            } />
+
+            {/* 🟢 NEW: USER GUIDE ROUTE */}
+            {/* Accessible by any logged-in user (CHW, DOCTOR, ADMIN) */}
+            <Route path="/guide" element={
+              userRole ? (
+                <Layout role={userRole} logout={logout}>
+                  <UserGuide />
                 </Layout>
               ) : <Navigate to="/" />
             } />
