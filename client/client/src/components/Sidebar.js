@@ -5,13 +5,22 @@ import {
   FaUserMd, FaChartPie, FaGlobeAfrica, FaCog, 
   FaSignOutAlt, FaBars, FaTimes, FaUserInjured 
 } from 'react-icons/fa'; 
-import './Sidebar.css'; // Import our new styles
+import './Sidebar.css'; 
 
 const Sidebar = ({ role, onLogout }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const toggle = () => setIsOpen(!isOpen);
   const closeMenu = () => setIsOpen(false);
+
+  // 🔹 GHOST MODE STYLE (Matches SmartRecorder.js)
+  // 1. 5% Opacity background (blends with main window)
+  // 2. Right border for subtle separation
+  const sidebarStyle = {
+    background: 'rgba(255, 255, 255, 0.05)',
+    borderRight: '1px solid rgba(255, 255, 255, 0.2)',
+    backdropFilter: 'none', // Rely on parent window blur
+  };
 
   return (
     <>
@@ -27,12 +36,22 @@ const Sidebar = ({ role, onLogout }) => {
       />
 
       {/* SIDEBAR CONTAINER */}
-      {/* CSS handles the sliding via the 'open' class */}
-      <div className={`sidebar ${isOpen ? 'open' : ''}`}>
+      {/* Added style={sidebarStyle} to enforce transparency */}
+      <div className={`sidebar ${isOpen ? 'open' : ''}`} style={sidebarStyle}>
         
         {/* LOGO AREA */}
         <div className="d-flex align-items-center mb-4 px-2">
-           <div style={{width:'35px', height:'35px', background:'#0d6efd', borderRadius:'8px', display:'flex', alignItems:'center', justifyContent:'center', marginRight:'10px', color:'white'}}>
+           <div style={{
+             width:'35px', 
+             height:'35px', 
+             background:'#0d6efd', 
+             borderRadius:'8px', 
+             display:'flex', 
+             alignItems:'center', 
+             justifyContent:'center', 
+             marginRight:'10px', 
+             color:'white'
+           }}>
              <FaUserMd />
            </div>
            <div>
@@ -63,7 +82,7 @@ const Sidebar = ({ role, onLogout }) => {
             </NavLink>
           )}
           
-          <div className="my-2 border-top"></div>
+          <div className="my-2 border-top" style={{borderColor: 'rgba(255,255,255,0.2)'}}></div>
 
           <NavLink to="/settings" onClick={closeMenu} className="nav-link">
             <FaCog className="me-3" /> Settings
@@ -73,8 +92,8 @@ const Sidebar = ({ role, onLogout }) => {
         {/* LOGOUT BUTTON */}
         <div className="mt-auto">
           <button 
-            className="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center py-2" 
-            style={{borderRadius: '12px'}}
+            className="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center py-2 shadow-sm" 
+            style={{borderRadius: '12px', borderWidth: '1px'}}
             onClick={onLogout}
           >
             <FaSignOutAlt className="me-2"/> Log out
