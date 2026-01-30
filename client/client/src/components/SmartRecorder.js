@@ -272,18 +272,18 @@ const SmartRecorder = ({ onLogout }) => {
 
   return (
     <div className="container-fluid p-0 d-flex justify-content-center">
-      {/* 🔹 FIX 2: FORCE TRANSPARENCY 
-         We override the global .glass-card background (0.45) with (0.15).
-         This prevents the "Double Glass" effect where two layers make it opaque white.
+      {/* 🔴 THE FIX: GHOST MODE
+          - background: 'rgba(255, 255, 255, 0.05)' -> 5% Opacity
+          - backdropFilter: 'blur(0px)' -> Removed double-blur
       */}
       <div 
         className="glass-card w-100 shadow-lg" 
         style={{ 
             maxWidth: '1100px', 
             minHeight: '85vh', 
-            backdropFilter: 'blur(12px)',
-            background: 'rgba(255, 255, 255, 0.15)', // <--- THE MAGIC NUMBER (Very Transparent)
-            border: '1px solid rgba(255, 255, 255, 0.3)'
+            backdropFilter: 'blur(0px)', // No extra blur, rely on parent
+            background: 'rgba(255, 255, 255, 0.05)', // Almost invisible
+            border: '1px solid rgba(255, 255, 255, 0.2)'
         }}
       >
         <div className="p-3 p-md-5">
