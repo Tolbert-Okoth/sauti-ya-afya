@@ -128,12 +128,18 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         spectrum = np.abs(np.fft.rfft(y_chunk)) + 1e-10
         freqs = np.fft.rfftfreq(len(y_chunk), 1/sr)
         
-        # ✨ Spectral Centroid (Center of Mass)
+        # ✨ Spectral Centroid
         spectral_centroid = np.sum(freqs * spectrum) / np.sum(spectrum)
 
         # ✨ Spectral Bandwidth
         spectral_bandwidth = np.sqrt(np.sum(((freqs - spectral_centroid) ** 2) * spectrum) / np.sum(spectrum))
         
+        # ✨ Crest Factor (Peak-to-RMS Ratio)
+        # Asthma/Normal = Low (<10), Pneumonia/Crackle = High (>12)
+        rms = np.sqrt(np.mean(y_chunk**2))
+        peak = np.max(np.abs(y_chunk))
+        crest_factor = peak / (rms + 1e-9)
+
         log_spectrum = np.log(spectrum)
         geom_mean = np.exp(np.mean(log_spectrum))
         arith_mean = np.mean(spectrum)
@@ -149,9 +155,9 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
         transients = count_transients_tkeo(y_chunk)
         
-        return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients, spectral_centroid, spectral_bandwidth
+        return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients, spectral_centroid, spectral_bandwidth, crest_factor
     except:
-        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0, 0.0, 0.0
 
 def generate_spectrogram(y_chunk, sr=16000):
     try:
@@ -183,7 +189,7 @@ def predict_with_tta(model, input_tensor):
 
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
     try:
-        print(f"--- [START] Analysis Job (Centroid & Bandwidth Powered) ---")
+        print(f"--- [START] Analysis Job (Hybrid Booster Powered) ---")
         
         command = ['ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', '-preset', 'ultrafast', '-loglevel', 'error', '-']
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -206,9 +212,13 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         total_transients = 0
         pneumonia_chunks_detected = 0 
         asthma_chunks_detected = 0
+        
+        # New Feature Counters
+        total_wheeze_duration = 0 # Dummy counter for logic
+        detected_wheezes = 0
 
         for idx, chunk in enumerate(chunks):
-            # 🛡️ 0. SAFETY INIT (Prevents UnboundLocalError)
+            # 🛡️ SAFETY INIT
             chunk_severity = 1 
             
             rms = calculate_rms(chunk)
@@ -220,7 +230,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 probs = predict_with_tta(model, input_tensor)
                 probs_list.append(probs) 
                 
-                zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients, centroid, bandwidth = extract_physics_features_lite(chunk)
+                zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients, centroid, bandwidth, crest_factor = extract_physics_features_lite(chunk)
                 
                 winner_idx = torch.argmax(probs).item()
                 chunk_diagnosis = CLASSES[winner_idx]
@@ -240,12 +250,12 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 is_friction_noise = (zcr > 0.18) 
                 not_too_flat = (spectral_flatness < 0.42)
                 
-                # Crackle Definitions
-                is_coarse_crackle = (0.10 < zcr <= 0.15) and (centroid > 1000)
+                # Crackle Definitions (Added Crest Factor Check)
+                is_coarse_crackle = (0.10 < zcr <= 0.15) and (centroid > 1000) and (crest_factor > 12)
                 is_fine_crackle = (zcr > 0.15) 
 
-                # ✨ ASTHMA DEFINITION
-                is_wheeze = (600 < centroid < 2500) and (bandwidth < 1200) and (zcr > 0.08) and (transients < 2)
+                # ✨ ASTHMA DEFINITION (STRICTER) ✨
+                is_wheeze = (600 < centroid < 2500) and (bandwidth < 1000) and (spectral_flatness < 0.25) and (zcr > 0.08) and (transients < 2)
 
                 # ✨ VESICULAR SHIELD
                 is_vesicular = (zcr < 0.09) and (centroid < 700) and (rms < 0.06) and (transients == 0) and not is_wheeze
@@ -265,8 +275,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                      probs_list[-1] = torch.tensor([0.02, 0.96, 0.02]) 
 
                 elif is_wheeze and not is_friction_noise:
-                     print(f"   🌬️ WHEEZE DETECTED: Tonal Sound (Centroid={centroid:.0f}Hz). Forcing Asthma.")
+                     print(f"   🌬️ WHEEZE DETECTED: Tonal Sound (Flatness={spectral_flatness:.2f}, Crest={crest_factor:.1f}). Forcing Asthma.")
                      force_asthma = True
+                     detected_wheezes += 1
 
                 elif is_golden_normal and not is_coarse_crackle:
                      print(f"   ✨ GOLDEN ZONE: Physics matches Healthy Breath. Forcing Normal.")
@@ -286,7 +297,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                              print(f"   ⚠️ HIERARCHY: Fine Crackles ({transients} bursts) -> Forcing Pneumonia.")
                              force_pneumonia = True
                         elif is_coarse_crackle:
-                             print(f"   ⚠️ HIERARCHY: Coarse Crackles ({transients} bursts) -> Forcing Pneumonia.")
+                             print(f"   ⚠️ HIERARCHY: Coarse Crackles ({transients} bursts, Crest={crest_factor:.1f}) -> Forcing Pneumonia.")
                              force_pneumonia = True
                     
                     elif transients >= 4 and not_too_flat:
@@ -312,24 +323,16 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
                 # 2. STANDARD AI PREDICTION
                 else:
-                    if chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
-                        if spectral_flatness > 0.42:
-                            print(f"   ℹ️ INFO: AI=Pneumonia, but Sound is Flat ({spectral_flatness:.2f}). Downgrading to Normal.")
-                            chunk_diagnosis = "Normal"
-                            chunk_severity = 1
-                            probs_list[-1] = torch.tensor([0.10, 0.80, 0.10])
-                        else:
-                            pneumonia_chunks_detected += 1
-
                     # 🛡️ ASTHMA SANITY CHECK
                     if chunk_diagnosis == "Asthma":
                         if is_wheeze: 
                              asthma_chunks_detected += 1
-                             chunk_severity = 2 # 🛡️ FIX: Explicit Assignment
+                             chunk_severity = 2 
                         
                         # 🛑 VETO: "ASTHMA DOES NOT POP"
-                        elif transients > 4 and centroid > 800 and not is_friction_noise:
-                             print(f"   🛡️ VETO: AI=Asthma, but TKEO detected {transients} bursts. Asthma does not pop. Overriding to Pneumonia.")
+                        # High Crest Factor (>12) is a strong indicator of pops vs whistles
+                        elif (transients > 4 or crest_factor > 15) and centroid > 800 and not is_friction_noise:
+                             print(f"   🛡️ VETO: AI=Asthma, but Sound is Spiky (Crest={crest_factor:.1f}). Overriding to Pneumonia.")
                              chunk_diagnosis = "Pneumonia"
                              chunk_severity = 3
                              winner_prob = 0.85 
@@ -346,6 +349,15 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                         else:
                              if chunk_diagnosis != "Normal": chunk_severity = 2 
                     
+                    elif chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
+                        if spectral_flatness > 0.42:
+                            print(f"   ℹ️ INFO: AI=Pneumonia, but Sound is Flat. Downgrading to Normal.")
+                            chunk_diagnosis = "Normal"
+                            chunk_severity = 1
+                            probs_list[-1] = torch.tensor([0.10, 0.80, 0.10])
+                        else:
+                            pneumonia_chunks_detected += 1
+
                     elif chunk_diagnosis == "Normal": chunk_severity = 1
                     elif winner_prob < 0.60: 
                         chunk_diagnosis = f"Suspected {chunk_diagnosis}"
@@ -366,18 +378,36 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 if avg_probs_tensor.dim() > 1: avg_probs_tensor = avg_probs_tensor.squeeze()
                 averaged_probs = {k: float(v) for k, v in zip(CLASSES, avg_probs_tensor)}
                 
-                # 3. CONSENSUS LOGIC
-                if pneumonia_chunks_detected > 0:
-                    final_diagnosis = "Pneumonia"
-                    if averaged_probs["Pneumonia"] < 0.5:
-                        averaged_probs["Pneumonia"] = 0.75
-                        averaged_probs["Asthma"] = min(averaged_probs["Asthma"], 0.20)
+                # 3. HYBRID CONSENSUS LOGIC (The Rule-Based Booster)
+                # If the AI is confused (Probs are close), use Physics to break the tie.
                 
-                elif asthma_chunks_detected > 0:
+                p_pneumonia = averaged_probs["Pneumonia"]
+                p_asthma = averaged_probs["Asthma"]
+                
+                # If Physics detected 'Event Types', trust them absolutely.
+                if pneumonia_chunks_detected > asthma_chunks_detected:
+                    final_diagnosis = "Pneumonia"
+                    averaged_probs["Pneumonia"] = max(p_pneumonia, 0.80)
+                
+                elif asthma_chunks_detected > pneumonia_chunks_detected:
                     final_diagnosis = "Asthma"
-                    if averaged_probs["Asthma"] < 0.5:
-                        averaged_probs["Asthma"] = 0.75
-                        averaged_probs["Pneumonia"] = min(averaged_probs["Pneumonia"], 0.20)
+                    averaged_probs["Asthma"] = max(p_asthma, 0.80)
+                
+                # If Physics is silent, but AI has an opinion:
+                elif p_asthma > 0.5 or p_pneumonia > 0.5:
+                     # Check close contest
+                     if abs(p_asthma - p_pneumonia) < 0.2:
+                         print(f"   ⚖️ TIE BREAKER: Asthma ({p_asthma:.2f}) vs Pneumonia ({p_pneumonia:.2f})")
+                         if detected_wheezes > 0:
+                             print("   -> Wheezes found. Winner: Asthma.")
+                             final_diagnosis = "Asthma"
+                         elif total_transients > 5:
+                             print("   -> Transients found. Winner: Pneumonia.")
+                             final_diagnosis = "Pneumonia"
+                         else:
+                             final_diagnosis = max(averaged_probs, key=averaged_probs.get)
+                     else:
+                         final_diagnosis = max(averaged_probs, key=averaged_probs.get)
 
                 elif physics_override:
                      if highest_severity == 3: final_diagnosis = "Pneumonia"
