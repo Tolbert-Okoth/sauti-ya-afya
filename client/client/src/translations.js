@@ -39,7 +39,7 @@ export const translations = {
     "developed_for": "Developed for",
     "tech_lead": "Technical Lead",
     "purpose_label": "Purpose",
-    "purpose_text": "AI-Powered Pediatric Pneumonia Screening",
+    "purpose_text": "AI-Powered Pediatric Pneumonia/asthma Screening",
     "contact_admin": "Contact Admin", // Updated label
     "version": "Version",
     "settings_title": "Settings",

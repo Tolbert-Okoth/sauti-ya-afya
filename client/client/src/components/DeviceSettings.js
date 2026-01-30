@@ -1,13 +1,24 @@
 /* client/src/components/DeviceSettings.js */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaArrowLeft, FaMicrophoneAlt, FaSlidersH, FaLock } from 'react-icons/fa';
+import { FaArrowLeft, FaMicrophoneAlt, FaSlidersH, FaLock, FaExclamationTriangle } from 'react-icons/fa';
+import { useTranslation } from '../hooks/useTranslation';
 
 const DeviceSettings = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  
   const [mics, setMics] = useState([]);
   const [selectedMic, setSelectedMic] = useState('');
   const [testLevel, setTestLevel] = useState(0);
+  const [isListening, setIsListening] = useState(false);
+  const [permissionError, setPermissionError] = useState(false);
+
+  // Refs to maintain audio context without re-renders
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const dataArrayRef = useRef(null);
+  const rafIdRef = useRef(null);
 
   // Custom Glass Input Style
   const glassInputStyle = {
@@ -17,35 +28,116 @@ const DeviceSettings = () => {
       backdropFilter: 'blur(5px)'
   };
 
+  // 1. Fetch Real Hardware Devices
   useEffect(() => {
-    setMics([
-        { label: 'Default - Built-in Microphone', id: 'default' },
-        { label: 'Headset Microphone (Wired)', id: 'headset' }
-    ]);
+    const getDevices = async () => {
+      try {
+        // Request permission briefly to unlock device labels
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices
+          .filter(device => device.kind === 'audioinput')
+          .map(dev => ({ 
+            label: dev.label || `Microphone ${dev.deviceId.slice(0,5)}...`, 
+            id: dev.deviceId 
+          }));
+          
+        setMics(audioInputs);
+        if (audioInputs.length > 0) setSelectedMic(audioInputs[0].id);
+        setPermissionError(false);
+      } catch (err) {
+        console.error("Mic permission error:", err);
+        setPermissionError(true);
+      }
+    };
+    getDevices();
+
+    // Cleanup on unmount
+    return () => stopListening();
   }, []);
 
-  const toggleTest = () => {
-    const interval = setInterval(() => {
-        setTestLevel(Math.random() * 100);
-    }, 100);
-    setTimeout(() => {
-        clearInterval(interval);
-        setTestLevel(0);
-    }, 3000);
+  // 2. Real-Time Audio Processing Logic
+  const startListening = async () => {
+    if (isListening) {
+        stopListening();
+        return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { deviceId: selectedMic ? { exact: selectedMic } : undefined } 
+      });
+
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 256;
+      
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      source.connect(analyserRef.current);
+      
+      const bufferLength = analyserRef.current.frequencyBinCount;
+      dataArrayRef.current = new Uint8Array(bufferLength);
+
+      setIsListening(true);
+      draw(); // Start the animation loop
+    } catch (err) {
+      console.error("Error accessing mic:", err);
+      setPermissionError(true);
+    }
+  };
+
+  const stopListening = () => {
+    if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+    if (audioContextRef.current) audioContextRef.current.close();
+    setIsListening(false);
+    setTestLevel(0);
+  };
+
+  // 3. The Visualizer Loop (60fps)
+  const draw = () => {
+    if (!analyserRef.current) return;
+
+    analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+
+    // Calculate Average Volume (RMS approximation)
+    let sum = 0;
+    const len = dataArrayRef.current.length;
+    for (let i = 0; i < len; i++) {
+        sum += dataArrayRef.current[i];
+    }
+    const average = sum / len;
+
+    // Normalize signal for UI (Standard speech is usually 30-70 range)
+    // Multiplied by 1.5 to make it responsive
+    const visualLevel = Math.min((average / 128) * 100 * 1.5, 100);
+    
+    setTestLevel(visualLevel);
+    rafIdRef.current = requestAnimationFrame(draw);
   };
 
   return (
     <div className="container p-0" style={{ maxWidth: '600px' }}>
       <button className="btn btn-link text-dark-brown text-decoration-none mb-3 p-0 fw-bold" onClick={() => navigate(-1)}>
-        <FaArrowLeft /> Back to Settings
+        <FaArrowLeft /> {t('back')}
       </button>
       
       <div className="d-flex align-items-center mb-4">
           <div className="bg-white rounded-circle p-2 text-dark me-3 shadow-sm">
              <FaMicrophoneAlt />
           </div>
-          <h4 className="fw-bold text-dark-brown mb-0">Device & Audio</h4>
+          <h4 className="fw-bold text-dark-brown mb-0">{t('menu_device')}</h4>
       </div>
+
+      {/* Permission Error Alert */}
+      {permissionError && (
+        <div className="alert alert-danger d-flex align-items-center mb-4 shadow-sm">
+            <FaExclamationTriangle className="me-2"/>
+            <div>
+                <strong>Access Denied:</strong> Please allow microphone access in your browser settings.
+            </div>
+        </div>
+      )}
 
       <div className="glass-card p-4 mb-4">
             <label className="form-label fw-bold text-dark-brown small text-uppercase">Microphone Input</label>
@@ -53,22 +145,46 @@ const DeviceSettings = () => {
                 className="form-select mb-4 shadow-sm" 
                 style={glassInputStyle}
                 value={selectedMic} 
-                onChange={(e) => setSelectedMic(e.target.value)}
+                onChange={(e) => {
+                    setSelectedMic(e.target.value);
+                    stopListening(); // Reset if mic changes
+                }}
             >
-                {mics.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                {mics.length > 0 ? (
+                    mics.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                ) : (
+                    <option>Loading devices...</option>
+                )}
             </select>
 
-            <button className="btn btn-outline-dark w-100 mb-3 border-2" onClick={toggleTest}>
-                <FaMicrophoneAlt className="me-2"/> Test Microphone (3s)
+            <button 
+                className={`btn w-100 mb-3 border-2 ${isListening ? 'btn-danger' : 'btn-outline-dark'}`} 
+                onClick={startListening}
+            >
+                <FaMicrophoneAlt className="me-2"/> 
+                {isListening ? 'Stop Test' : 'Test Microphone'}
             </button>
             
-            {/* Glass Visualizer Bar */}
+            {/* Real Audio Visualizer Bar */}
+            <div className="d-flex justify-content-between small text-muted mb-1">
+                <span>Silence</span>
+                <span>Loud</span>
+            </div>
             <div className="progress" style={{height: '12px', background: 'rgba(0,0,0,0.1)', borderRadius: '6px'}}>
                 <div 
-                    className={`progress-bar rounded-pill transition-all ${testLevel > 80 ? 'bg-danger' : 'bg-success'}`} 
+                    className={`progress-bar rounded-pill transition-all ${testLevel > 60 ? 'bg-danger' : 'bg-success'}`} 
                     role="progressbar" 
-                    style={{width: `${testLevel}%`, transition: 'width 0.1s ease'}}
+                    style={{width: `${testLevel}%`, transition: 'width 0.05s linear'}}
                 ></div>
+            </div>
+            
+            {/* Real-time Environmental Feedback */}
+            <div className="text-center mt-2" style={{height: '20px'}}>
+                {isListening && (
+                    <small className={`fw-bold ${testLevel > 60 ? 'text-danger' : 'text-success'}`}>
+                        {testLevel > 60 ? 'Environment Too Noisy!' : 'Good Audio Levels'}
+                    </small>
+                )}
             </div>
       </div>
 
