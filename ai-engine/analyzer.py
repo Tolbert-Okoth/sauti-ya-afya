@@ -102,10 +102,10 @@ def count_transients_lite(y_chunk):
         
         peak_accel = np.max(np.abs(acceleration))
         
-        # 🛡️ TUNED SENSITIVITY: 
-        # Raised Multiplier to 0.20 (20%) - Demands sharper spikes
-        # This ignores the "texture" of rough breathing.
-        thresh = max(peak_accel * 0.20, 0.005) 
+        # 🚀 SENSITIVITY BOOST: 
+        # Lowered from 0.20 -> 0.15. We trust the Flatness Guard to stop noise.
+        # This catches "Quieter Crackles" that aren't huge spikes.
+        thresh = max(peak_accel * 0.15, 0.005) 
         
         block_size = 320 
         n_blocks = len(acceleration) // block_size
@@ -216,24 +216,21 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
                 # 🛡️ THE NORMALCY SHIELD
                 if chunk_diagnosis == "Normal" and winner_prob > 0.85:
-                    pneumonia_pop_threshold = 10 
+                    pneumonia_pop_threshold = 8 # Lowered from 10 -> 8 (More Sensitive)
                     pneumonia_harm_limit = 0.5 
                 else:
-                    pneumonia_pop_threshold = 7 
+                    pneumonia_pop_threshold = 5 # Lowered from 7 -> 5 (More Sensitive)
                     pneumonia_harm_limit = 0.65 
 
                 # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 
                 # 🛡️ FRICTION & FLATNESS GUARDS
+                # These are the "Safety Gates" that allow us to use lower thresholds above
                 is_friction_noise = (zcr > 0.21)
-                
-                # 🛡️ FLATNESS GUARD: Pneumonia is thuddy, not hissy.
-                # If the sound is too flat (>0.42), it's likely just air noise.
                 not_too_flat = (spectral_flatness < 0.42)
 
                 # Check for "Crispness"
-                # Corrected: Strictly > 0.17 to filter the 0.15-0.16 artifacts
                 is_crisp = (zcr > 0.17 or kurt > 2.5) 
 
                 if is_friction_noise:
@@ -241,10 +238,10 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 else:
                     # Added 'not_too_flat' to the Tier 1 Check
                     if transients >= pneumonia_pop_threshold and is_crisp and not_too_flat:
-                        print(f"   ⚠️ HIERARCHY: Crisp Crackles ({transients} pops, ZCR={zcr:.2f}, Flat={spectral_flatness:.2f}) -> Forcing Pneumonia.")
+                        print(f"   ⚠️ HIERARCHY: Crisp Crackles ({transients} pops, ZCR={zcr:.2f}) -> Forcing Pneumonia.")
                         force_pneumonia = True
                     
-                    elif transients >= 4 and harmonic_ratio < pneumonia_harm_limit and is_crisp and chunk_diagnosis != "Normal" and not_too_flat:
+                    elif transients >= 3 and harmonic_ratio < pneumonia_harm_limit and is_crisp and chunk_diagnosis != "Normal" and not_too_flat:
                         print(f"   ⚠️ HIERARCHY: Moderate Crackles ({transients} pops) -> Forcing Pneumonia.")
                         force_pneumonia = True
 
@@ -339,11 +336,11 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
             # GLOBAL TRANSIENT CHECK
-            # Also apply Flatness Guard here
+            # Lowered from 10 -> 8 for Global Check
             avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
             avg_flat = np.mean([extract_physics_features_lite(c, 16000)[2] for c in chunks]) if chunks else 0
             
-            if total_transients > 10 and avg_harm < 0.65 and avg_flat < 0.42 and final_diagnosis != "Pneumonia":
+            if total_transients > 8 and avg_harm < 0.65 and avg_flat < 0.42 and final_diagnosis != "Pneumonia":
                  print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
                  final_diagnosis = "Pneumonia"
                  averaged_probs["Pneumonia"] = 0.85
