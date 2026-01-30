@@ -236,20 +236,28 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 is_crisp = (zcr > 0.15) 
 
                 # ✨ GOLDEN ZONE ✨
+                # NEW STABILITY CHECK: If RMS is low (<0.05) and pops are 0, it's definitely normal.
+                is_stable_normal = (rms < 0.05) and (transients == 0) and (not is_friction_noise)
+                
                 is_golden_normal = (0.05 < zcr < 0.15) and (0.30 < spectral_flatness < 0.60) and (transients < 4)
 
-                if is_golden_normal:
+                if is_stable_normal:
+                     print(f"   ✨ STABILITY CHECK: Non-impulsive, low energy (RMS={rms:.3f}). Forcing Normal.")
+                     chunk_diagnosis = "Normal"
+                     chunk_severity = 1
+                     probs_list[-1] = torch.tensor([0.02, 0.96, 0.02]) 
+                     # Do not count transients (it is 0 anyway)
+
+                elif is_golden_normal:
                      print(f"   ✨ GOLDEN ZONE: Physics matches Healthy Breath (ZCR={zcr:.2f}). Forcing Normal.")
                      chunk_diagnosis = "Normal"
                      chunk_severity = 1
                      probs_list[-1] = torch.tensor([0.05, 0.90, 0.05]) 
-                     # Valid Normal Sound -> Count Transients (likely 0-3)
                      total_transients += transients
                      
                 elif is_friction_noise:
                      print(f"   ⚠️ ARTIFACT: Extreme Friction/Turbulence (ZCR={zcr:.2f}). Ignoring Pops.")
                      # 🛑 DO NOT ADD TO TOTAL_TRANSIENTS
-                     # We ignore these pops globally too.
                 else:
                     # Valid Sound -> Add to Global Sum
                     total_transients += transients
