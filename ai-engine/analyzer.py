@@ -114,7 +114,6 @@ def count_transients_tkeo(y_chunk):
                 count += 1
         
         # 6. Artifact Guard (Machine Gun fire)
-        # 🛑 FIXED: Lowered from 45 -> 35 to catch 'zipper' noise false positives
         if count > 35: return 0 
         return count
     except:
@@ -125,7 +124,17 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         zero_crossings = np.nonzero(np.diff(y_chunk > 0))[0]
         zcr = len(zero_crossings) / len(y_chunk)
         
+        # FFT for Spectrum
         spectrum = np.abs(np.fft.rfft(y_chunk)) + 1e-10
+        freqs = np.fft.rfftfreq(len(y_chunk), 1/sr)
+        
+        # ✨ Spectral Centroid (Center of Mass)
+        spectral_centroid = np.sum(freqs * spectrum) / np.sum(spectrum)
+
+        # ✨ NEW: Spectral Bandwidth (The "Width" of the Sound)
+        # Narrow = Tonal (Asthma) | Wide = Noisy (Pneumonia/Normal)
+        spectral_bandwidth = np.sqrt(np.sum(((freqs - spectral_centroid) ** 2) * spectrum) / np.sum(spectrum))
+        
         log_spectrum = np.log(spectrum)
         geom_mean = np.exp(np.mean(log_spectrum))
         arith_mean = np.mean(spectrum)
@@ -139,13 +148,11 @@ def extract_physics_features_lite(y_chunk, sr=16000):
             kurt = 0.0; ent = 0.0
         
         mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
-        
-        # 🔥 SWITCHED TO TKEO DETECTOR 🔥
         transients = count_transients_tkeo(y_chunk)
         
-        return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients
+        return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients, spectral_centroid, spectral_bandwidth
     except:
-        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0
+        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0, 0.0
 
 def generate_spectrogram(y_chunk, sr=16000):
     try:
@@ -177,7 +184,7 @@ def predict_with_tta(model, input_tensor):
 
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
     try:
-        print(f"--- [START] Analysis Job (TKEO Powered) ---")
+        print(f"--- [START] Analysis Job (Centroid & Bandwidth Powered) ---")
         
         command = ['ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', '-preset', 'ultrafast', '-loglevel', 'error', '-']
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -199,6 +206,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         physics_override = False
         total_transients = 0
         pneumonia_chunks_detected = 0 
+        asthma_chunks_detected = 0
 
         for idx, chunk in enumerate(chunks):
             rms = calculate_rms(chunk)
@@ -210,11 +218,8 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 probs = predict_with_tta(model, input_tensor)
                 probs_list.append(probs) 
                 
-                zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients = extract_physics_features_lite(chunk)
+                zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients, centroid, bandwidth = extract_physics_features_lite(chunk)
                 
-                # 🛑 REMOVED BLIND SUMMATION HERE
-                # We wait to see if it's noise first.
-
                 winner_idx = torch.argmax(probs).item()
                 chunk_diagnosis = CLASSES[winner_idx]
                 winner_prob = float(probs[winner_idx])
@@ -222,54 +227,75 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 # 🛡️ THE NORMALCY SHIELD
                 if chunk_diagnosis == "Normal" and winner_prob > 0.85:
                     pneumonia_pop_threshold = 8 
-                    pneumonia_harm_limit = 0.5 
                 else:
                     pneumonia_pop_threshold = 5 
-                    pneumonia_harm_limit = 0.65 
 
                 # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
+                force_asthma = False # New Flag
                 
                 # Guards
                 is_friction_noise = (zcr > 0.18) 
                 not_too_flat = (spectral_flatness < 0.42)
-                is_crisp = (zcr > 0.15) 
-
-                # ✨ GOLDEN ZONE ✨
-                # NEW STABILITY CHECK: If RMS is low (<0.05) and pops are 0, it's definitely normal.
-                is_stable_normal = (rms < 0.05) and (transients == 0) and (not is_friction_noise)
                 
-                is_golden_normal = (0.05 < zcr < 0.15) and (0.30 < spectral_flatness < 0.60) and (transients < 4)
+                # Crackle Definitions
+                is_coarse_crackle = (0.10 < zcr <= 0.15) and (centroid > 1000)
+                is_fine_crackle = (zcr > 0.15) 
 
-                if is_stable_normal:
-                     print(f"   ✨ STABILITY CHECK: Non-impulsive, low energy (RMS={rms:.3f}). Forcing Normal.")
+                # ✨ ASTHMA DEFINITION (Wheeze Detection) ✨
+                # Centroid: Medium-High (600 - 2000 Hz)
+                # Bandwidth: Narrow (< 1500 Hz) - Tonal sound, not broadband noise.
+                # ZCR: High (0.08 - 0.25)
+                # No Crackles: Transients == 0 (Wheezes are continuous, not popping)
+                is_wheeze = (600 < centroid < 2500) and (bandwidth < 1200) and (zcr > 0.08) and (transients < 2)
+
+                # ✨ VESICULAR SHIELD
+                is_vesicular = (zcr < 0.09) and (centroid < 700) and (rms < 0.06) and (transients == 0) and not is_wheeze
+                is_stable_normal = (rms < 0.05) and (transients == 0) and (not is_friction_noise)
+                is_golden_normal = (0.05 < zcr < 0.15) and (0.30 < spectral_flatness < 0.60) and (transients < 4) and not is_wheeze
+
+                if is_vesicular:
+                     print(f"   ✨ VESICULAR SHIELD: Perfect Healthy Lung Pattern. Forcing Normal.")
+                     chunk_diagnosis = "Normal"
+                     chunk_severity = 1
+                     probs_list[-1] = torch.tensor([0.01, 0.98, 0.01]) 
+
+                elif is_stable_normal:
+                     print(f"   ✨ STABILITY CHECK: Non-impulsive (RMS={rms:.3f}). Forcing Normal.")
                      chunk_diagnosis = "Normal"
                      chunk_severity = 1
                      probs_list[-1] = torch.tensor([0.02, 0.96, 0.02]) 
-                     # Do not count transients (it is 0 anyway)
 
-                elif is_golden_normal:
-                     print(f"   ✨ GOLDEN ZONE: Physics matches Healthy Breath (ZCR={zcr:.2f}). Forcing Normal.")
+                elif is_wheeze and not is_friction_noise:
+                     print(f"   🌬️ WHEEZE DETECTED: Tonal Sound (Centroid={centroid:.0f}Hz, Bandwidth={bandwidth:.0f}Hz). Forcing Asthma.")
+                     force_asthma = True
+
+                elif is_golden_normal and not is_coarse_crackle:
+                     print(f"   ✨ GOLDEN ZONE: Physics matches Healthy Breath. Forcing Normal.")
                      chunk_diagnosis = "Normal"
                      chunk_severity = 1
                      probs_list[-1] = torch.tensor([0.05, 0.90, 0.05]) 
                      total_transients += transients
                      
                 elif is_friction_noise:
-                     print(f"   ⚠️ ARTIFACT: Extreme Friction/Turbulence (ZCR={zcr:.2f}). Ignoring Pops.")
-                     # 🛑 DO NOT ADD TO TOTAL_TRANSIENTS
+                     print(f"   ⚠️ ARTIFACT: Extreme Friction (ZCR={zcr:.2f}). Ignoring Pops.")
+
                 else:
-                    # Valid Sound -> Add to Global Sum
                     total_transients += transients
 
-                    # TKEO + ZCR Logic
-                    if transients >= pneumonia_pop_threshold and is_crisp and not_too_flat:
-                        print(f"   ⚠️ HIERARCHY: TKEO Crackles ({transients} bursts, ZCR={zcr:.2f}) -> Forcing Pneumonia.")
-                        force_pneumonia = True
+                    # TKEO + ZCR + CENTROID Logic
+                    if transients >= pneumonia_pop_threshold and not_too_flat:
+                        if is_fine_crackle:
+                             print(f"   ⚠️ HIERARCHY: Fine Crackles ({transients} bursts) -> Forcing Pneumonia.")
+                             force_pneumonia = True
+                        elif is_coarse_crackle:
+                             print(f"   ⚠️ HIERARCHY: Coarse Crackles ({transients} bursts, Centroid={centroid:.0f}Hz) -> Forcing Pneumonia.")
+                             force_pneumonia = True
                     
-                    elif transients >= 4 and harmonic_ratio < pneumonia_harm_limit and is_crisp and chunk_diagnosis != "Normal" and not_too_flat:
-                        print(f"   ⚠️ HIERARCHY: Moderate TKEO Crackles ({transients} bursts) -> Forcing Pneumonia.")
-                        force_pneumonia = True
+                    elif transients >= 4 and not_too_flat:
+                         if is_fine_crackle or is_coarse_crackle:
+                             print(f"   ⚠️ HIERARCHY: Moderate Crackles ({transients} bursts) -> Forcing Pneumonia.")
+                             force_pneumonia = True
 
                 if force_pneumonia:
                     chunk_diagnosis = "Pneumonia"
@@ -279,6 +305,14 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     physics_override = True
                     pneumonia_chunks_detected += 1
                 
+                elif force_asthma:
+                    chunk_diagnosis = "Asthma"
+                    chunk_severity = 2
+                    winner_prob = 0.85
+                    probs_list[-1] = torch.tensor([0.85, 0.05, 0.10])
+                    physics_override = True
+                    asthma_chunks_detected += 1
+
                 # 2. STANDARD AI PREDICTION
                 else:
                     if chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
@@ -292,33 +326,16 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
                     # 🛡️ ASTHMA SANITY CHECK
                     if chunk_diagnosis == "Asthma":
-                        veto_triggered = False
-                        
-                        if spectral_flatness > 0.35:
-                            if transients > 1 and is_crisp and not is_friction_noise and not_too_flat: 
-                                veto_triggered = True
-                                new_diag = "Pneumonia"
-                            else: 
-                                print(f"   ℹ️ INFO: AI=Asthma, but Sound is Flat. Likely Normal Breath.")
-                                chunk_diagnosis = "Normal"
-                                chunk_severity = 1
-                                winner_prob = 0.60
-                                probs_list[-1] = torch.tensor([0.20, 0.60, 0.20]) 
-                        
-                        elif transients > 2 and is_crisp and not is_friction_noise: 
-                            veto_triggered = True
-                            new_diag = "Pneumonia"
-
-                        if veto_triggered:
-                            print(f"   🛡️ VETO: AI=Asthma, but TKEO detected bursts ({transients}).")
-                            chunk_diagnosis = new_diag
-                            chunk_severity = 3
-                            winner_prob = 0.85 
-                            probs_list[-1] = torch.tensor([0.10, 0.05, 0.85]) 
-                            physics_override = True
-                            pneumonia_chunks_detected += 1
+                        if is_wheeze: # Supported by physics
+                             asthma_chunks_detected += 1
+                        elif spectral_flatness > 0.35:
+                             print(f"   ℹ️ INFO: AI=Asthma, but Sound is Flat. Likely Normal Breath.")
+                             chunk_diagnosis = "Normal"
+                             chunk_severity = 1
+                             winner_prob = 0.60
+                             probs_list[-1] = torch.tensor([0.20, 0.60, 0.20]) 
                         else:
-                            if chunk_diagnosis != "Normal": chunk_severity = 2 
+                             if chunk_diagnosis != "Normal": chunk_severity = 2 
                     
                     elif chunk_diagnosis == "Normal": chunk_severity = 1
                     elif winner_prob < 0.60: 
@@ -347,6 +364,12 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                         averaged_probs["Pneumonia"] = 0.75
                         averaged_probs["Asthma"] = min(averaged_probs["Asthma"], 0.20)
                 
+                elif asthma_chunks_detected > 0:
+                    final_diagnosis = "Asthma"
+                    if averaged_probs["Asthma"] < 0.5:
+                        averaged_probs["Asthma"] = 0.75
+                        averaged_probs["Pneumonia"] = min(averaged_probs["Pneumonia"], 0.20)
+
                 elif physics_override:
                      if highest_severity == 3: final_diagnosis = "Pneumonia"
                      elif highest_severity == 2: final_diagnosis = "Asthma"
