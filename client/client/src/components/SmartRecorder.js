@@ -4,7 +4,6 @@ import axios from 'axios';
 import { auth } from '../firebase'; 
 import config from '../config'; 
 import LungAnimation from './LungAnimation';
-// import AudioVisualizer from './AudioVisualizer'; // Unused currently
 import { 
   FaMicrophone, FaStop, FaNotesMedical, FaCheckCircle, 
   FaCalendarAlt, FaPhoneAlt, FaSignOutAlt,
@@ -41,7 +40,7 @@ const SmartRecorder = ({ onLogout }) => {
   const audioChunksRef = useRef([]);
   const animationRef = useRef(null);
 
-  // GLASSMORPHISM STYLES (Inline fallback if class is missing, but class is preferred)
+  // 🔹 FIX 1: Match Login Input Transparency (0.45)
   const glassInputStyle = {
       background: 'rgba(255, 255, 255, 0.45)', 
       border: '1px solid rgba(255, 255, 255, 0.6)',
@@ -63,7 +62,6 @@ const SmartRecorder = ({ onLogout }) => {
             setServerStatus('ready');
         } catch (e) {
             console.warn("Server waking up...", e);
-            // Assume ready eventually to not block UI
             setServerStatus('ready'); 
         }
     };
@@ -133,7 +131,6 @@ const SmartRecorder = ({ onLogout }) => {
       return `${years}y`;
   };
 
-  // 🧠 SMART EXPLANATION GENERATOR
   const getClinicalExplanation = (result) => {
       if (!result || !result.biomarkers) return "No data available.";
       
@@ -211,7 +208,6 @@ const SmartRecorder = ({ onLogout }) => {
       pythonFormData.append('file', audioBlob, 'recording.webm');
       pythonFormData.append('threshold', systemConfig.confidence_threshold);
 
-      // Submit to Python Engine
       const submitRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
       const jobId = submitRes.data.job_id;
 
@@ -219,7 +215,6 @@ const SmartRecorder = ({ onLogout }) => {
       let attempts = 0;
       const maxAttempts = 60; 
 
-      // Poll for results
       while (attempts < maxAttempts) {
           attempts++;
           await new Promise(resolve => setTimeout(resolve, 2000));
@@ -238,7 +233,6 @@ const SmartRecorder = ({ onLogout }) => {
       setAnalysis(aiResult);
       setSaveStatus('saving');
 
-      // Save to Node.js Backend
       const token = await auth.currentUser.getIdToken();
       const nodeFormData = new FormData();
       nodeFormData.append('file', audioBlob, 'recording.webm');
@@ -278,11 +272,20 @@ const SmartRecorder = ({ onLogout }) => {
 
   return (
     <div className="container-fluid p-0 d-flex justify-content-center">
-      {/* THE MAIN GLASS CARD
-         Using 'glass-card' from index.css for consistency.
-         Added w-100 to ensure it fills the space on mobile.
+      {/* 🔹 FIX 2: FORCE TRANSPARENCY 
+         We override the global .glass-card background (0.45) with (0.15).
+         This prevents the "Double Glass" effect where two layers make it opaque white.
       */}
-      <div className="glass-card w-100 shadow-lg" style={{ maxWidth: '1100px', minHeight: '85vh', backdropFilter: 'blur(12px)' }}>
+      <div 
+        className="glass-card w-100 shadow-lg" 
+        style={{ 
+            maxWidth: '1100px', 
+            minHeight: '85vh', 
+            backdropFilter: 'blur(12px)',
+            background: 'rgba(255, 255, 255, 0.15)', // <--- THE MAGIC NUMBER (Very Transparent)
+            border: '1px solid rgba(255, 255, 255, 0.3)'
+        }}
+      >
         <div className="p-3 p-md-5">
           
           {/* Header with Server Status Badge */}
@@ -395,7 +398,6 @@ const SmartRecorder = ({ onLogout }) => {
               </div>
               
               <div className="row g-5 p-4 pt-0">
-                  {/* Text Results */}
                   <div className="col-12 col-lg-6 border-end-lg">
                       <h1 className={`mb-2 fw-bold display-6 ${getRiskColor(analysis.risk_level_output)}`}>
                           {analysis.preliminary_assessment}
@@ -405,7 +407,6 @@ const SmartRecorder = ({ onLogout }) => {
                       <div className="p-4 rounded-3 shadow-sm mb-3" style={{background: 'rgba(255,255,255,0.7)'}}>
                           <label className="small fw-bold text-muted text-uppercase mb-3 d-block"><FaChartBar className="me-2"/>AI Confidence Scores</label>
                           
-                          {/* Pneumonia */}
                           <div className="mb-3">
                               <div className="d-flex justify-content-between mb-1">
                                   <span>Pneumonia</span>
@@ -415,8 +416,7 @@ const SmartRecorder = ({ onLogout }) => {
                                   <div className="progress-bar bg-danger" style={{width: `${(analysis.biomarkers?.prob_pneumonia || 0) * 100}%`}}></div>
                               </div>
                           </div>
-
-                          {/* Asthma */}
+                          
                           <div className="mb-3">
                               <div className="d-flex justify-content-between mb-1">
                                   <span>Asthma</span>
@@ -427,7 +427,6 @@ const SmartRecorder = ({ onLogout }) => {
                               </div>
                           </div>
 
-                          {/* 🟢 NEW: Normal Pattern */}
                           <div className="mb-1">
                               <div className="d-flex justify-content-between mb-1">
                                   <span>Normal / Healthy</span>
@@ -440,12 +439,10 @@ const SmartRecorder = ({ onLogout }) => {
                       </div>
                   </div>
 
-                  {/* Interpretation & Visuals */}
                   <div className="col-12 col-lg-6">
                       <div className="h-100 d-flex flex-column">
                           <label className="small fw-bold text-muted text-uppercase mb-3"><FaInfoCircle className="me-2"/>Clinical Interpretation</label>
                           
-                          {/* 📝 SMART EXPLANATION BOX */}
                           <div className="flex-grow-1 rounded-3 p-4 border border-info shadow-sm" style={{backgroundColor: '#e3f2fd'}}>
                               <h5 className="fw-bold text-dark-brown mb-3">Analysis Summary</h5>
                               <p className="text-dark mb-0" style={{lineHeight: '1.6'}}>
