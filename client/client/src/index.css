@@ -50,12 +50,18 @@ body::before {
   }
 }
 
+/* 🟢 UPDATED: High Transparency Fix */
 .glass-card {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.8),
-    rgba(255, 255, 255, 0.4)
-  );
+  /* Changed from opaque gradient to transparent flat color (0.45) */
+  background: rgba(255, 255, 255, 0.45);
+  
+  /* Added blur so text remains readable over the background */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  
+  /* Added subtle border for edge definition */
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  
   border-radius: 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
