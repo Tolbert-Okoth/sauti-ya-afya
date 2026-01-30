@@ -21,10 +21,9 @@ html, body {
   min-height: 100vh; /* Changed from height: 100vh */
   overflow-x: hidden;
   color: var(--text-main);
-  background: url('https://i.graphicmama.com/blog/wp-content/uploads/2021/04/22100034/free-medical-background-51.png')
-  no-repeat center center fixed;
+  background: url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
+    no-repeat center center fixed;
   background-size: cover;
-
 }
 
 body::before {
