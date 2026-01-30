@@ -88,33 +88,45 @@ def apply_bandpass_filter(waveform, sr=16000):
     except:
         return waveform
 
-def count_transients_lite(y_chunk):
+def count_transients_tkeo(y_chunk):
+    """
+    Teager-Kaiser Energy Operator (TKEO) Detector.
+    detects 'Explosive' energy bursts while suppressing smooth background noise.
+    Formula: Psi[n] = x[n]^2 - x[n-1]*x[n+1]
+    """
     try:
-        y_abs = np.abs(y_chunk)
-        if np.max(y_abs) < 0.02: return 0
+        # 1. Basic Safety
+        if np.max(np.abs(y_chunk)) < 0.02: return 0
 
-        window_size = 80 
-        cumsum = np.cumsum(np.insert(y_abs, 0, 0))
-        envelope = (cumsum[window_size:] - cumsum[:-window_size]) / window_size
+        # 2. Calculate TKEO Energy Profile
+        # We use array slicing to implement x[n]^2 - x[n-1]*x[n+1] efficiently
+        # current^2 - (prev * next)
+        y_sq = y_chunk[1:-1] ** 2
+        y_cross = y_chunk[:-2] * y_chunk[2:]
+        tkeo_energy = y_sq - y_cross
         
-        velocity = np.diff(envelope)
-        acceleration = np.diff(velocity)
+        # 3. Rectify (Absolute Energy)
+        tkeo_abs = np.abs(tkeo_energy)
+
+        # 4. Dynamic Thresholding (Crest Factor on Energy)
+        # We look for bursts that are 6x the average energy level.
+        # This is incredibly robust against "Hissy" breath noise.
+        avg_energy = np.mean(tkeo_abs)
+        thresh = max(avg_energy * 6.0, 0.0005) # Floor to prevent detecting silence
         
-        peak_accel = np.max(np.abs(acceleration))
-        
-        # 🚀 SENSITIVITY BOOST: 
-        # Lowered from 0.20 -> 0.15. We trust the Flatness Guard to stop noise.
-        # This catches "Quieter Crackles" that aren't huge spikes.
-        thresh = max(peak_accel * 0.15, 0.005) 
-        
+        # 5. Count Bursts (Block-wise)
+        # We check 20ms blocks (320 samples)
         block_size = 320 
-        n_blocks = len(acceleration) // block_size
+        n_blocks = len(tkeo_abs) // block_size
         count = 0
+        
         for i in range(n_blocks):
-            if np.max(acceleration[i*block_size : (i+1)*block_size]) > thresh:
+            # If the MAX energy in this block exceeds threshold, it's a pop.
+            if np.max(tkeo_abs[i*block_size : (i+1)*block_size]) > thresh:
                 count += 1
         
-        if count > 40: return 0 
+        # 6. Artifact Guard (Machine Gun fire)
+        if count > 45: return 0 
         return count
     except:
         return 0
@@ -138,7 +150,9 @@ def extract_physics_features_lite(y_chunk, sr=16000):
             kurt = 0.0; ent = 0.0
         
         mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
-        transients = count_transients_lite(y_chunk)
+        
+        # 🔥 SWITCHED TO TKEO DETECTOR 🔥
+        transients = count_transients_tkeo(y_chunk)
         
         return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients
     except:
@@ -174,7 +188,7 @@ def predict_with_tta(model, input_tensor):
 
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
     try:
-        print(f"--- [START] Analysis Job (Lite Mode: No Librosa) ---")
+        print(f"--- [START] Analysis Job (TKEO Powered) ---")
         
         command = ['ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', '-preset', 'ultrafast', '-loglevel', 'error', '-']
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -216,33 +230,39 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
                 # 🛡️ THE NORMALCY SHIELD
                 if chunk_diagnosis == "Normal" and winner_prob > 0.85:
-                    pneumonia_pop_threshold = 8 # Lowered from 10 -> 8 (More Sensitive)
+                    pneumonia_pop_threshold = 8 
                     pneumonia_harm_limit = 0.5 
                 else:
-                    pneumonia_pop_threshold = 5 # Lowered from 7 -> 5 (More Sensitive)
+                    pneumonia_pop_threshold = 5 # TKEO is precise, we can trust 5 pops
                     pneumonia_harm_limit = 0.65 
 
                 # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 
-                # 🛡️ FRICTION & FLATNESS GUARDS
-                # These are the "Safety Gates" that allow us to use lower thresholds above
+                # Guards (The Spotters)
                 is_friction_noise = (zcr > 0.21)
                 not_too_flat = (spectral_flatness < 0.42)
+                is_crisp = (zcr > 0.15) 
 
-                # Check for "Crispness"
-                is_crisp = (zcr > 0.17 or kurt > 2.5) 
+                # ✨ GOLDEN ZONE ✨
+                is_golden_normal = (0.05 < zcr < 0.15) and (0.30 < spectral_flatness < 0.60) and (transients < 4)
 
-                if is_friction_noise:
+                if is_golden_normal:
+                     print(f"   ✨ GOLDEN ZONE: Physics matches Healthy Breath (ZCR={zcr:.2f}). Forcing Normal.")
+                     chunk_diagnosis = "Normal"
+                     chunk_severity = 1
+                     probs_list[-1] = torch.tensor([0.05, 0.90, 0.05]) 
+                     
+                elif is_friction_noise:
                      print(f"   ⚠️ ARTIFACT: Extreme Friction (ZCR={zcr:.2f}). Ignoring Pops.")
                 else:
-                    # Added 'not_too_flat' to the Tier 1 Check
+                    # TKEO + ZCR Logic
                     if transients >= pneumonia_pop_threshold and is_crisp and not_too_flat:
-                        print(f"   ⚠️ HIERARCHY: Crisp Crackles ({transients} pops, ZCR={zcr:.2f}) -> Forcing Pneumonia.")
+                        print(f"   ⚠️ HIERARCHY: TKEO Crackles ({transients} bursts, ZCR={zcr:.2f}) -> Forcing Pneumonia.")
                         force_pneumonia = True
                     
-                    elif transients >= 3 and harmonic_ratio < pneumonia_harm_limit and is_crisp and chunk_diagnosis != "Normal" and not_too_flat:
-                        print(f"   ⚠️ HIERARCHY: Moderate Crackles ({transients} pops) -> Forcing Pneumonia.")
+                    elif transients >= 4 and harmonic_ratio < pneumonia_harm_limit and is_crisp and chunk_diagnosis != "Normal" and not_too_flat:
+                        print(f"   ⚠️ HIERARCHY: Moderate TKEO Crackles ({transients} bursts) -> Forcing Pneumonia.")
                         force_pneumonia = True
 
                 if force_pneumonia:
@@ -256,7 +276,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 # 2. STANDARD AI PREDICTION
                 else:
                     if chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
-                        # 🛡️ Double Check AI's Pneumonia against Flatness Guard
                         if spectral_flatness > 0.42:
                             print(f"   ℹ️ INFO: AI=Pneumonia, but Sound is Flat ({spectral_flatness:.2f}). Downgrading to Normal.")
                             chunk_diagnosis = "Normal"
@@ -274,7 +293,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                                 veto_triggered = True
                                 new_diag = "Pneumonia"
                             else: 
-                                print(f"   ℹ️ INFO: AI=Asthma, but Sound is Flat ({spectral_flatness:.2f}) and Smooth. Likely Normal Breath.")
+                                print(f"   ℹ️ INFO: AI=Asthma, but Sound is Flat. Likely Normal Breath.")
                                 chunk_diagnosis = "Normal"
                                 chunk_severity = 1
                                 winner_prob = 0.60
@@ -285,7 +304,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                             new_diag = "Pneumonia"
 
                         if veto_triggered:
-                            print(f"   🛡️ VETO: AI=Asthma, but Physics (Flat={spectral_flatness:.2f}, Pops={transients}) indicates Crackles.")
+                            print(f"   🛡️ VETO: AI=Asthma, but TKEO detected bursts ({transients}).")
                             chunk_diagnosis = new_diag
                             chunk_severity = 3
                             winner_prob = 0.85 
@@ -335,13 +354,12 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
             if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
             
-            # GLOBAL TRANSIENT CHECK
-            # Lowered from 10 -> 8 for Global Check
+            # GLOBAL CHECK (12 Bursts)
             avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
             avg_flat = np.mean([extract_physics_features_lite(c, 16000)[2] for c in chunks]) if chunks else 0
             
-            if total_transients > 8 and avg_harm < 0.65 and avg_flat < 0.42 and final_diagnosis != "Pneumonia":
-                 print(f"   ⚠️ Global Transient Check: {total_transients} pops detected. Overriding to Pneumonia.")
+            if total_transients > 12 and avg_harm < 0.65 and avg_flat < 0.42 and final_diagnosis != "Pneumonia":
+                 print(f"   ⚠️ Global TKEO Check: {total_transients} bursts detected. Overriding to Pneumonia.")
                  final_diagnosis = "Pneumonia"
                  averaged_probs["Pneumonia"] = 0.85
 
