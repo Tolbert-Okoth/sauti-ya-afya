@@ -12,15 +12,19 @@
   --text-medical: #2c3e50;
 }
 
-body {
+/* 🟢 FIX 1: Use min-height so background stretches forever */
+html, body {
   margin: 0;
+  padding: 0;
   font-family: 'Inter', sans-serif;
-  height: 100vh;
+  width: 100%;
+  min-height: 100vh; /* Changed from height: 100vh */
+  overflow-x: hidden;
   color: var(--text-main);
-  background: url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
-    no-repeat center center fixed;
+  background: url('https://i.graphicmama.com/blog/wp-content/uploads/2021/04/22100034/free-medical-background-51.png')
+  no-repeat center center fixed;
   background-size: cover;
-}
+  
 
 body::before {
   content: '';
@@ -28,40 +32,44 @@ body::before {
   inset: 0;
   background: rgba(10, 61, 98, 0.25);
   z-index: -1;
+  min-height: 100vh; /* Ensure overlay stretches too */
 }
 
+/* 🟢 FIX 2: Responsive Glass Window */
 .glass-window {
   background: rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(12px);
   border-radius: 24px;
-  height: 90vh;
+  
+  /* Use min-height so it grows if content is long */
+  min-height: 90vh; 
   width: 95vw;
   margin: 5vh auto;
+  
   display: flex;
+  overflow: hidden; 
+  box-shadow: 0 8px 32px rgba(14, 33, 62, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
+/* 🟢 FIX 3: Mobile Full Screen (Removes bottom whitespace gap) */
 @media (max-width: 768px) {
   .glass-window {
-    width: 100vw;
-    height: 100vh;
-    margin: 0;
+    width: 100%;
+    min-height: 100vh; /* Force full screen height */
+    margin: 0;         /* Remove margins that cause white gaps */
     border-radius: 0;
+    border: none;      /* Remove border on mobile for clean look */
     flex-direction: column;
   }
 }
 
-/* 🟢 UPDATED: High Transparency Fix */
+/* High Transparency Card Style */
 .glass-card {
-  /* Changed from opaque gradient to transparent flat color (0.45) */
   background: rgba(255, 255, 255, 0.45);
-  
-  /* Added blur so text remains readable over the background */
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  
-  /* Added subtle border for edge definition */
   border: 1px solid rgba(255, 255, 255, 0.4);
-  
   border-radius: 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }

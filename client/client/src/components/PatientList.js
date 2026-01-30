@@ -21,6 +21,7 @@ const PatientList = () => {
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioError, setAudioError] = useState(null);
 
+  // 🔹 GLASSMORPHISM INPUT STYLE
   const glassInputStyle = {
       background: 'rgba(255,255,255,0.4)',
       border: '1px solid rgba(255,255,255,0.3)',
@@ -199,6 +200,7 @@ const PatientList = () => {
         {filteredPatients.length > 0 ? (
           filteredPatients.map((p) => (
             <div key={p.id} className="col-12 mb-3">
+              {/* 🟢 Using global .glass-card class for consistency */}
               <div 
                 className="glass-card border-0 p-3 transition-all hover-shadow bg-white" 
                 style={{cursor: 'pointer', borderRadius: '12px'}}
