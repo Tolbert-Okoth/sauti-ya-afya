@@ -4,11 +4,11 @@ import axios from 'axios';
 import { auth } from '../firebase'; 
 import config from '../config'; 
 import LungAnimation from './LungAnimation';
-import AudioVisualizer from './AudioVisualizer'; 
+// import AudioVisualizer from './AudioVisualizer'; // Unused currently
 import { 
   FaMicrophone, FaStop, FaNotesMedical, FaCheckCircle, 
-  FaStethoscope, FaPhoneAlt, FaCalendarAlt, FaSignOutAlt,
-  FaServer, FaCircle, FaInfoCircle, FaChartBar
+  FaCalendarAlt, FaPhoneAlt, FaSignOutAlt,
+  FaServer, FaCircle, FaInfoCircle, FaChartBar, FaStethoscope
 } from 'react-icons/fa';
 
 const SmartRecorder = ({ onLogout }) => {
@@ -41,13 +41,14 @@ const SmartRecorder = ({ onLogout }) => {
   const audioChunksRef = useRef([]);
   const animationRef = useRef(null);
 
+  // GLASSMORPHISM STYLES (Inline fallback if class is missing, but class is preferred)
   const glassInputStyle = {
-      background: 'rgba(255, 255, 255, 0.7)', 
-      border: '1px solid rgba(255, 255, 255, 0.5)',
+      background: 'rgba(255, 255, 255, 0.45)', 
+      border: '1px solid rgba(255, 255, 255, 0.6)',
       color: '#2d3436',
-      borderRadius: '8px',
-      padding: '10px 12px',
-      outline: 'none'
+      borderRadius: '12px',
+      padding: '11px',
+      backdropFilter: 'blur(6px)'
   };
 
   useEffect(() => {
@@ -55,16 +56,14 @@ const SmartRecorder = ({ onLogout }) => {
     const wakeUpServer = async () => {
         try {
             setServerStatus('waking');
-            console.log("🔥 Warming up AI Engine...");
             const minWait = new Promise(resolve => setTimeout(resolve, 1500));
             const ping = axios.get('https://sauti-ya-afya-1.onrender.com/');
             
             await Promise.all([ping, minWait]);
-            
             setServerStatus('ready');
-            console.log("✅ AI Engine is Awake & Ready!");
         } catch (e) {
-            console.log("⚠️ Server waking up...", e);
+            console.warn("Server waking up...", e);
+            // Assume ready eventually to not block UI
             setServerStatus('ready'); 
         }
     };
@@ -149,7 +148,7 @@ const SmartRecorder = ({ onLogout }) => {
       } else if (diag === "Asthma") {
           return `The analysis identified high-frequency continuous sounds typical of wheezing (${p_asthma}% confidence). This pattern is distinct from the clear airflow found in normal recordings.`;
       } else if (diag === "Normal") {
-          return `The recording exhibits clear, unobstructed airflow patterns (${p_normal}% match). No significant adventitious sounds (like crackles or wheezes) were detected above the risk threshold.`;
+          return `The recording exhibits clear, unobstructed airflow patterns (${p_normal}% match). No significant adventitious sounds were detected above the risk threshold.`;
       } else {
           return "The audio pattern is inconclusive. Please ensure the recording is clear of background noise and try again.";
       }
@@ -212,20 +211,19 @@ const SmartRecorder = ({ onLogout }) => {
       pythonFormData.append('file', audioBlob, 'recording.webm');
       pythonFormData.append('threshold', systemConfig.confidence_threshold);
 
-      console.log("🎫 SUBMITTING JOB TICKET...");
+      // Submit to Python Engine
       const submitRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
       const jobId = submitRes.data.job_id;
-      console.log(`✅ JOB STARTED. TICKET: ${jobId}`);
 
       let aiResult = null;
       let attempts = 0;
       const maxAttempts = 60; 
 
+      // Poll for results
       while (attempts < maxAttempts) {
           attempts++;
           await new Promise(resolve => setTimeout(resolve, 2000));
           const statusRes = await axios.get(`https://sauti-ya-afya-1.onrender.com/status/${jobId}`);
-          console.log(`⏳ Poll #${attempts}: ${statusRes.data.status}`);
 
           if (statusRes.data.status === 'completed') {
               aiResult = statusRes.data.result;
@@ -237,10 +235,10 @@ const SmartRecorder = ({ onLogout }) => {
 
       if (!aiResult) throw new Error("Server timed out processing the request.");
 
-      console.log("🎯 RESULT RETRIEVED:", aiResult);
       setAnalysis(aiResult);
       setSaveStatus('saving');
 
+      // Save to Node.js Backend
       const token = await auth.currentUser.getIdToken();
       const nodeFormData = new FormData();
       nodeFormData.append('file', audioBlob, 'recording.webm');
@@ -264,7 +262,7 @@ const SmartRecorder = ({ onLogout }) => {
       setSaveStatus('saved');
 
     } catch (err) {
-      console.error("❌ ERROR:", err);
+      console.error("Analysis Error:", err);
       alert(`Error: ${err.message}`);
       setSaveStatus('error');
     } finally {
@@ -280,7 +278,11 @@ const SmartRecorder = ({ onLogout }) => {
 
   return (
     <div className="container-fluid p-0 d-flex justify-content-center">
-      <div className="glass-card w-100" style={{ maxWidth: '1100px', minHeight: '85vh' }}>
+      {/* THE MAIN GLASS CARD
+         Using 'glass-card' from index.css for consistency.
+         Added w-100 to ensure it fills the space on mobile.
+      */}
+      <div className="glass-card w-100 shadow-lg" style={{ maxWidth: '1100px', minHeight: '85vh', backdropFilter: 'blur(12px)' }}>
         <div className="p-3 p-md-5">
           
           {/* Header with Server Status Badge */}
@@ -328,16 +330,16 @@ const SmartRecorder = ({ onLogout }) => {
               <div className="col-12 col-md-6">
                   <label className="form-label small fw-bold text-muted text-uppercase">Date of Birth</label>
                   <div className="input-group">
-                      <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.4)'}}><FaCalendarAlt className="text-muted"/></span>
-                      <input name="dob" type="date" className={`form-control ${errors.dob ? 'is-invalid' : ''}`} style={glassInputStyle} onChange={handleInputChange} max={new Date().toISOString().split("T")[0]} />
+                      <span className="input-group-text border-0" style={{...glassInputStyle, borderRight: 'none', borderTopRightRadius: 0, borderBottomRightRadius: 0}}><FaCalendarAlt className="text-muted"/></span>
+                      <input name="dob" type="date" className={`form-control ${errors.dob ? 'is-invalid' : ''}`} style={{...glassInputStyle, borderLeft: 'none', borderTopLeftRadius: 0, borderBottomLeftRadius: 0}} onChange={handleInputChange} max={new Date().toISOString().split("T")[0]} />
                       {errors.dob && <div className="invalid-feedback d-block">{errors.dob}</div>}
                   </div>
               </div>
               <div className="col-12 col-md-6">
                   <label className="form-label small fw-bold text-muted text-uppercase">Phone Number (KE)</label>
                   <div className="input-group">
-                      <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.4)'}}><FaPhoneAlt className="text-muted"/></span>
-                      <input name="phone" type="tel" className={`form-control ${errors.phone ? 'is-invalid' : ''}`} style={glassInputStyle} onChange={handleInputChange} placeholder="e.g. 0712 345 678" />
+                      <span className="input-group-text border-0" style={{...glassInputStyle, borderRight: 'none', borderTopRightRadius: 0, borderBottomRightRadius: 0}}><FaPhoneAlt className="text-muted"/></span>
+                      <input name="phone" type="tel" className={`form-control ${errors.phone ? 'is-invalid' : ''}`} style={{...glassInputStyle, borderLeft: 'none', borderTopLeftRadius: 0, borderBottomLeftRadius: 0}} onChange={handleInputChange} placeholder="e.g. 0712 345 678" />
                       {errors.phone && <div className="invalid-feedback d-block">{errors.phone}</div>}
                   </div>
               </div>
