@@ -92,40 +92,27 @@ def count_transients_tkeo(y_chunk):
     """
     Teager-Kaiser Energy Operator (TKEO) Detector.
     detects 'Explosive' energy bursts while suppressing smooth background noise.
-    Formula: Psi[n] = x[n]^2 - x[n-1]*x[n+1]
     """
     try:
-        # 1. Basic Safety
         if np.max(np.abs(y_chunk)) < 0.02: return 0
 
-        # 2. Calculate TKEO Energy Profile
-        # We use array slicing to implement x[n]^2 - x[n-1]*x[n+1] efficiently
-        # current^2 - (prev * next)
         y_sq = y_chunk[1:-1] ** 2
         y_cross = y_chunk[:-2] * y_chunk[2:]
         tkeo_energy = y_sq - y_cross
-        
-        # 3. Rectify (Absolute Energy)
         tkeo_abs = np.abs(tkeo_energy)
 
-        # 4. Dynamic Thresholding (Crest Factor on Energy)
-        # We look for bursts that are 8x (Raised from 6x) the average energy level.
-        # This prevents loud breathing (high avg energy) from triggering false positives.
+        # 🛡️ HEAVY BREATH FILTER (8.0x)
         avg_energy = np.mean(tkeo_abs)
-        thresh = max(avg_energy * 8.0, 0.0005) # Floor to prevent detecting silence
+        thresh = max(avg_energy * 8.0, 0.0005) 
         
-        # 5. Count Bursts (Block-wise)
-        # We check 20ms blocks (320 samples)
         block_size = 320 
         n_blocks = len(tkeo_abs) // block_size
         count = 0
         
         for i in range(n_blocks):
-            # If the MAX energy in this block exceeds threshold, it's a pop.
             if np.max(tkeo_abs[i*block_size : (i+1)*block_size]) > thresh:
                 count += 1
         
-        # 6. Artifact Guard (Machine Gun fire)
         if count > 45: return 0 
         return count
     except:
@@ -222,7 +209,8 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 probs_list.append(probs) 
                 
                 zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients = extract_physics_features_lite(chunk)
-                total_transients += transients
+                # 🛑 REMOVED BLIND SUMMATION HERE
+                # We wait to see if it's noise first.
 
                 winner_idx = torch.argmax(probs).item()
                 chunk_diagnosis = CLASSES[winner_idx]
@@ -239,9 +227,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 
-                # Guards (The Spotters)
-                # 🛡️ LOUD BREATH CEILING (Lowered to 0.18)
-                # Blocks Turbulence (0.19) but allows Real Crackles (0.15-0.17)
+                # Guards
                 is_friction_noise = (zcr > 0.18) 
                 not_too_flat = (spectral_flatness < 0.42)
                 is_crisp = (zcr > 0.15) 
@@ -254,10 +240,17 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                      chunk_diagnosis = "Normal"
                      chunk_severity = 1
                      probs_list[-1] = torch.tensor([0.05, 0.90, 0.05]) 
+                     # Valid Normal Sound -> Count Transients (likely 0-3)
+                     total_transients += transients
                      
                 elif is_friction_noise:
                      print(f"   ⚠️ ARTIFACT: Extreme Friction/Turbulence (ZCR={zcr:.2f}). Ignoring Pops.")
+                     # 🛑 DO NOT ADD TO TOTAL_TRANSIENTS
+                     # We ignore these pops globally too.
                 else:
+                    # Valid Sound -> Add to Global Sum
+                    total_transients += transients
+
                     # TKEO + ZCR Logic
                     if transients >= pneumonia_pop_threshold and is_crisp and not_too_flat:
                         print(f"   ⚠️ HIERARCHY: TKEO Crackles ({transients} bursts, ZCR={zcr:.2f}) -> Forcing Pneumonia.")
