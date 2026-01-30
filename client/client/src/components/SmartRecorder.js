@@ -40,7 +40,7 @@ const SmartRecorder = ({ onLogout }) => {
   const audioChunksRef = useRef([]);
   const animationRef = useRef(null);
 
-  // 🔹 FIX 1: Match Login Input Transparency (0.45)
+  // 🔹 DEBUG INPUT STYLE: High Visibility
   const glassInputStyle = {
       background: 'rgba(255, 255, 255, 0.45)', 
       border: '1px solid rgba(255, 255, 255, 0.6)',
@@ -51,13 +51,11 @@ const SmartRecorder = ({ onLogout }) => {
   };
 
   useEffect(() => {
-    // 🚀 VISUAL SERVER WARM-UP
     const wakeUpServer = async () => {
         try {
             setServerStatus('waking');
             const minWait = new Promise(resolve => setTimeout(resolve, 1500));
             const ping = axios.get('https://sauti-ya-afya-1.onrender.com/');
-            
             await Promise.all([ping, minWait]);
             setServerStatus('ready');
         } catch (e) {
@@ -272,23 +270,24 @@ const SmartRecorder = ({ onLogout }) => {
 
   return (
     <div className="container-fluid p-0 d-flex justify-content-center">
-      {/* 🔴 THE FIX: GHOST MODE
-          - background: 'rgba(255, 255, 255, 0.05)' -> 5% Opacity
-          - backdropFilter: 'blur(0px)' -> Removed double-blur
+      
+      {/* 🔴 DIAGNOSTIC MODE ACTIVATED:
+          1. Removed 'glass-card' class (to stop global CSS interference)
+          2. Added 'border-danger' (Red Border)
+          3. Set background to transparent explicitly
       */}
       <div 
-        className="glass-card w-100 shadow-lg" 
+        className="w-100 shadow-lg border border-5 border-danger" 
         style={{ 
             maxWidth: '1100px', 
             minHeight: '85vh', 
-            backdropFilter: 'blur(0px)', // No extra blur, rely on parent
-            background: 'rgba(255, 255, 255, 0.05)', // Almost invisible
-            border: '1px solid rgba(255, 255, 255, 0.2)'
+            background: 'transparent', // 100% Clear
+            backdropFilter: 'none'     // No Blur
         }}
       >
         <div className="p-3 p-md-5">
           
-          {/* Header with Server Status Badge */}
+          {/* Header */}
           <div className="d-flex align-items-center justify-content-between mb-5">
               <div className="d-flex align-items-center">
                   <div className="bg-white rounded-circle p-3 text-accent me-3 shadow-sm">
