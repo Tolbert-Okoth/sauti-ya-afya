@@ -208,6 +208,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         asthma_chunks_detected = 0
 
         for idx, chunk in enumerate(chunks):
+            # 🛡️ 0. SAFETY INIT (Prevents UnboundLocalError)
+            chunk_severity = 1 
+            
             rms = calculate_rms(chunk)
             if rms < 0.005: continue 
 
@@ -309,14 +312,22 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
 
                 # 2. STANDARD AI PREDICTION
                 else:
-                    # 🛡️ ASTHMA SANITY CHECK (UPDATED)
+                    if chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
+                        if spectral_flatness > 0.42:
+                            print(f"   ℹ️ INFO: AI=Pneumonia, but Sound is Flat ({spectral_flatness:.2f}). Downgrading to Normal.")
+                            chunk_diagnosis = "Normal"
+                            chunk_severity = 1
+                            probs_list[-1] = torch.tensor([0.10, 0.80, 0.10])
+                        else:
+                            pneumonia_chunks_detected += 1
+
+                    # 🛡️ ASTHMA SANITY CHECK
                     if chunk_diagnosis == "Asthma":
                         if is_wheeze: 
                              asthma_chunks_detected += 1
+                             chunk_severity = 2 # 🛡️ FIX: Explicit Assignment
                         
                         # 🛑 VETO: "ASTHMA DOES NOT POP"
-                        # If we have significant transients (>4) and it's not a heartbeat (>800Hz),
-                        # it CANNOT be Asthma. Override to Pneumonia.
                         elif transients > 4 and centroid > 800 and not is_friction_noise:
                              print(f"   🛡️ VETO: AI=Asthma, but TKEO detected {transients} bursts. Asthma does not pop. Overriding to Pneumonia.")
                              chunk_diagnosis = "Pneumonia"
@@ -335,15 +346,6 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                         else:
                              if chunk_diagnosis != "Normal": chunk_severity = 2 
                     
-                    elif chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
-                        if spectral_flatness > 0.42:
-                            print(f"   ℹ️ INFO: AI=Pneumonia, but Sound is Flat. Downgrading to Normal.")
-                            chunk_diagnosis = "Normal"
-                            chunk_severity = 1
-                            probs_list[-1] = torch.tensor([0.10, 0.80, 0.10])
-                        else:
-                            pneumonia_chunks_detected += 1
-
                     elif chunk_diagnosis == "Normal": chunk_severity = 1
                     elif winner_prob < 0.60: 
                         chunk_diagnosis = f"Suspected {chunk_diagnosis}"
