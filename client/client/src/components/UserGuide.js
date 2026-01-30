@@ -110,7 +110,7 @@ const UserGuide = () => {
                 <ul className="small text-muted ps-3 mb-0">
                     <li className="mb-2"><strong>Microphone Blocked?</strong> Click the "Lock" icon in your browser URL bar and set Microphone to "Allow".</li>
                     <li className="mb-2"><strong>No Audio?</strong> Check that your volume is up and the file downloaded correctly.</li>
-                    <li><strong>Login Issues?</strong> Contact the IT Administrator at <code>admin@sautiyaafya.org</code> for password resets.</li>
+                    <li><strong>Unexpected Errors?</strong> Try refreshing the page or restarting your browser.</li>
                 </ul>
             </div>
 
