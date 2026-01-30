@@ -113,7 +113,9 @@ def count_transients_tkeo(y_chunk):
             if np.max(tkeo_abs[i*block_size : (i+1)*block_size]) > thresh:
                 count += 1
         
-        if count > 45: return 0 
+        # 6. Artifact Guard (Machine Gun fire)
+        # 🛑 FIXED: Lowered from 45 -> 35 to catch 'zipper' noise false positives
+        if count > 35: return 0 
         return count
     except:
         return 0
@@ -209,6 +211,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 probs_list.append(probs) 
                 
                 zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients = extract_physics_features_lite(chunk)
+                
                 # 🛑 REMOVED BLIND SUMMATION HERE
                 # We wait to see if it's noise first.
 
