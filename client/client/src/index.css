@@ -4,8 +4,8 @@
 :root {
   /* Glassmorphism Tokens */
   --glass-bg: rgba(255, 255, 255, 0.75);
-  --glass-card-bg: rgba(255, 255, 255, 0.45); /* More transparent */
-  --glass-border: 1px solid rgba(255, 255, 255, 0.5); /* Thinner border */
+  --glass-card-bg: rgba(255, 255, 255, 0.5);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.8);
   --glass-shadow: 0 8px 32px rgba(14, 33, 62, 0.15);
 
   /* Medical Palette */
@@ -40,8 +40,7 @@ body::before {
 
 /* 3. LAYOUT ENGINE (The Floating Window) */
 .glass-window {
-  /* CHANGED: Highly transparent to see background details (like stethoscopes) */
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.45);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px); /* Safari support */
   border-radius: 24px;
@@ -50,7 +49,7 @@ body::before {
   margin: 5vh auto;
   display: flex;
   overflow: hidden; /* Prevents scrollbar inside the glass border */
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: var(--glass-border);
   box-shadow: var(--glass-shadow);
 }
 
@@ -63,37 +62,19 @@ body::before {
     border-radius: 0;
     flex-direction: column;
     border: none;
-    background: rgba(255, 255, 255, 0.85); /* Less transparent on mobile for readability */
   }
 }
 
 /* 4. COMPONENT CLASSES */
 .glass-card {
-  /* CHANGED: Removed milky linear-gradient, switched to flat high-transparency */
-  background: rgba(255, 255, 255, 0.45);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9),
+    rgba(255, 255, 255, 0.5)
+  );
   border-radius: 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-}
-
-/* NEW: Unified Input Style (Use this instead of inline styles) */
-.glass-input {
-  background: rgba(255, 255, 255, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.4);
-  color: var(--text-main);
-  backdrop-filter: blur(6px);
-  border-radius: 12px;
-  padding: 11px;
-  transition: all 0.3s ease;
-}
-
-.glass-input:focus {
-  background: rgba(255, 255, 255, 0.7);
-  border-color: var(--accent-blue);
-  outline: none;
-  box-shadow: 0 0 0 4px rgba(9, 132, 227, 0.1);
 }
 
 .bg-alice-blue {
