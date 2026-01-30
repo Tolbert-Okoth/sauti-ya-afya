@@ -1,59 +1,45 @@
 /* client/src/index.css */
 
-/* 1. DESIGN TOKENS (Variables) */
 :root {
-  /* Glassmorphism Tokens */
   --glass-bg: rgba(255, 255, 255, 0.75);
   --glass-card-bg: rgba(255, 255, 255, 0.5);
   --glass-border: 1px solid rgba(255, 255, 255, 0.8);
   --glass-shadow: 0 8px 32px rgba(14, 33, 62, 0.15);
 
-  /* Medical Palette */
-  --accent-green: #00b894; /* Success / Healthy */
-  --accent-blue: #0984e3;  /* Primary / Tech */
-  --text-main: #2d3436;    /* Dark Grey for readability */
-  --text-medical: #2c3e50; /* Navy for headers */
-  --bg-gradient-start: #f5f7fa;
-  --bg-gradient-end: #c3cfe2;
+  --accent-green: #00b894;
+  --accent-blue: #0984e3;
+  --text-main: #2d3436;
+  --text-medical: #2c3e50;
 }
 
-/* 2. GLOBAL RESET & BACKGROUND */
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', sans-serif;
   height: 100vh;
   color: var(--text-main);
-  /* 🛡️ DEFENSE FIX: Offline Gradient (No internet needed) */
-  background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
-  background-attachment: fixed; /* Keeps bg still while scrolling */
+  background: url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
+    no-repeat center center fixed;
+  background-size: cover;
 }
 
-/* Subtle overlay pattern */
 body::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 50%, rgba(9, 132, 227, 0.05), transparent 70%);
-  pointer-events: none;
+  background: rgba(10, 61, 98, 0.25);
   z-index: -1;
 }
 
-/* 3. LAYOUT ENGINE (The Floating Window) */
 .glass-window {
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px); /* Safari support */
   border-radius: 24px;
   height: 90vh;
   width: 95vw;
   margin: 5vh auto;
   display: flex;
-  overflow: hidden; /* Prevents scrollbar inside the glass border */
-  border: var(--glass-border);
-  box-shadow: var(--glass-shadow);
 }
 
-/* Mobile Responsiveness */
 @media (max-width: 768px) {
   .glass-window {
     width: 100vw;
@@ -61,62 +47,28 @@ body::before {
     margin: 0;
     border-radius: 0;
     flex-direction: column;
-    border: none;
   }
 }
 
-/* 4. COMPONENT CLASSES */
 .glass-card {
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.9),
-    rgba(255, 255, 255, 0.5)
+    rgba(255, 255, 255, 0.8),
+    rgba(255, 255, 255, 0.4)
   );
   border-radius: 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
-.bg-alice-blue {
-  background-color: #f0f8ff; /* Used in Clinical Interpretation box */
+.text-dark-brown {
+  color: var(--text-medical) !important;
 }
 
-/* Text Utilities */
-.text-dark-brown { color: var(--text-medical) !important; }
-.text-accent { color: var(--accent-blue) !important; }
-
-/* Interactive States */
-.hover-shadow { transition: transform 0.2s, box-shadow 0.2s; }
-.hover-shadow:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 15px rgba(0,0,0,0.1);
+::-webkit-scrollbar {
+  width: 6px;
 }
 
-/* 5. ANIMATIONS (Crucial for Loading States) */
-@keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.6; }
-  100% { opacity: 1; }
-}
-.animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-
-@keyframes slideIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-slide-in { animation: slideIn 0.4s ease-out forwards; }
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-.spin { animation: spin 1s linear infinite; }
-
-/* 6. SCROLLBAR POLISH */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(44, 62, 80, 0.2);
+  background: rgba(9, 132, 227, 0.4);
   border-radius: 10px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(44, 62, 80, 0.4); }
