@@ -89,6 +89,10 @@ def apply_bandpass_filter(waveform, sr=16000):
         return waveform
 
 def count_transients_tkeo(y_chunk):
+    """
+    Teager-Kaiser Energy Operator (TKEO) Detector.
+    detects 'Explosive' energy bursts while suppressing smooth background noise.
+    """
     try:
         if np.max(np.abs(y_chunk)) < 0.02: return 0
 
@@ -109,6 +113,7 @@ def count_transients_tkeo(y_chunk):
             if np.max(tkeo_abs[i*block_size : (i+1)*block_size]) > thresh:
                 count += 1
         
+        # 6. Artifact Guard (Machine Gun fire)
         if count > 35: return 0 
         return count
     except:
@@ -121,12 +126,10 @@ def calculate_spectral_flux(y_chunk, sr=16000):
     Low Flux = Steady State (Asthma/Normal)
     """
     try:
-        # Mini-STFT (Short-Time Fourier Transform)
         n_fft = 512
         hop_length = 256
         window = np.hanning(n_fft)
         
-        # Manually compute STFT frames to avoid heavy librosa dependency
         n_frames = (len(y_chunk) - n_fft) // hop_length
         if n_frames < 2: return 0.0
         
@@ -137,15 +140,11 @@ def calculate_spectral_flux(y_chunk, sr=16000):
             start = i * hop_length
             frame = y_chunk[start : start + n_fft] * window
             spectrum = np.abs(np.fft.rfft(frame))
-            
-            # Normalize to prevent volume bias
             spectrum = spectrum / (np.linalg.norm(spectrum) + 1e-9)
             
             if prev_spectrum is not None:
-                # Euclidean distance between consecutive frames (The Delta)
                 flux = np.linalg.norm(spectrum - prev_spectrum)
                 flux_sum += flux
-            
             prev_spectrum = spectrum
             
         return flux_sum / n_frames
@@ -172,13 +171,17 @@ def extract_physics_features_lite(y_chunk, sr=16000):
         peak = np.max(np.abs(y_chunk))
         crest_factor = peak / (rms + 1e-9)
         
-        # ✨ NEW: Spectral Flux (The "Delta" simulator)
+        # ✨ Spectral Flux
         spectral_flux = calculate_spectral_flux(y_chunk, sr)
 
         log_spectrum = np.log(spectrum)
         geom_mean = np.exp(np.mean(log_spectrum))
         arith_mean = np.mean(spectrum)
         spectral_flatness = geom_mean / arith_mean
+        
+        # Harmonic Ratio (Approximate as 1 - Flatness)
+        # High Ratio (>0.7) = Tonal (Asthma)
+        # Low Ratio (<0.5) = Noise (Normal/Pneumonia)
         harmonic_ratio = 1.0 - spectral_flatness
         
         if SCIPY_AVAILABLE:
@@ -224,7 +227,7 @@ def predict_with_tta(model, input_tensor):
 
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
     try:
-        print(f"--- [START] Analysis Job (Flux/Delta Powered) ---")
+        print(f"--- [START] Analysis Job (Vesicular Shield 2.0) ---")
         
         command = ['ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', '-preset', 'ultrafast', '-loglevel', 'error', '-']
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -247,12 +250,10 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
         total_transients = 0
         pneumonia_chunks_detected = 0 
         asthma_chunks_detected = 0
-        
-        # New Feature Counters
         detected_wheezes = 0
 
         for idx, chunk in enumerate(chunks):
-            # 🛡️ SAFETY INIT
+            # 🛡️ SAFETY INIT (Prevents UnboundLocalError)
             chunk_severity = 1 
             
             rms = calculate_rms(chunk)
@@ -270,13 +271,11 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 chunk_diagnosis = CLASSES[winner_idx]
                 winner_prob = float(probs[winner_idx])
 
-                # 🛡️ THE NORMALCY SHIELD
                 if chunk_diagnosis == "Normal" and winner_prob > 0.85:
                     pneumonia_pop_threshold = 8 
                 else:
                     pneumonia_pop_threshold = 5 
 
-                # 1. HYBRID PNEUMONIA CHECK
                 force_pneumonia = False
                 force_asthma = False 
                 
@@ -284,22 +283,28 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 is_friction_noise = (zcr > 0.18) 
                 not_too_flat = (spectral_flatness < 0.42)
                 
-                # Crackle Definitions 
-                # ✨ NEW: Added Flux check. High Flux (>1.5) = Chaotic Change (Pneumonia)
+                # Crackle Definitions
                 is_coarse_crackle = (0.10 < zcr <= 0.15) and (centroid > 1000) and (crest_factor > 12)
                 is_fine_crackle = (zcr > 0.15) 
 
-                # ✨ ASTHMA DEFINITION (STRICTER) ✨
-                # ✨ NEW: Added Flux check. Low Flux (<0.5) = Steady State (Asthma)
+                # ✨ ASTHMA DEFINITION (STRICT)
+                # Must be Tonal (High Harmonic Ratio / Low Flatness) and Steady (Low Flux)
                 is_wheeze = (600 < centroid < 2500) and (bandwidth < 1000) and (spectral_flatness < 0.25) and (zcr > 0.08) and (transients < 2) and (flux < 0.5)
 
-                # ✨ VESICULAR SHIELD
-                is_vesicular = (zcr < 0.09) and (centroid < 700) and (rms < 0.06) and (transients == 0) and not is_wheeze
-                is_stable_normal = (rms < 0.05) and (transients == 0) and (not is_friction_noise)
+                # ✨ VESICULAR SHIELD 2.0 (STRICT NORMAL)
+                # RMS < 0.04 (User Data: 0.03 + safety margin)
+                # ZCR < 0.08 (User Data: Very smooth)
+                # Harmonic Ratio < 0.5 (Non-musical, just air noise)
+                is_vesicular = (zcr < 0.08) and (centroid < 650) and (rms < 0.04) and (transients == 0) and (harmonic_ratio < 0.5) and not is_wheeze
+                
+                # ✨ STABILITY CHECK (Silence/Calm)
+                is_stable_normal = (rms < 0.03) and (transients == 0) and (not is_friction_noise)
+                
+                # ✨ GOLDEN ZONE (General Healthy)
                 is_golden_normal = (0.05 < zcr < 0.15) and (0.30 < spectral_flatness < 0.60) and (transients < 4) and not is_wheeze
 
                 if is_vesicular:
-                     print(f"   ✨ VESICULAR SHIELD: Perfect Healthy Lung Pattern. Forcing Normal.")
+                     print(f"   ✨ VESICULAR SHIELD: Perfect Healthy Lung Pattern (ZCR={zcr:.2f}, RMS={rms:.3f}). Forcing Normal.")
                      chunk_diagnosis = "Normal"
                      chunk_severity = 1
                      probs_list[-1] = torch.tensor([0.01, 0.98, 0.01]) 
@@ -357,16 +362,12 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     physics_override = True
                     asthma_chunks_detected += 1
 
-                # 2. STANDARD AI PREDICTION
                 else:
-                    # 🛡️ ASTHMA SANITY CHECK
                     if chunk_diagnosis == "Asthma":
                         if is_wheeze: 
                              asthma_chunks_detected += 1
                              chunk_severity = 2 
                         
-                        # 🛑 VETO: "ASTHMA DOES NOT POP"
-                        # High Flux (>1.5) or High Crest Factor (>12) = Chaos = Pneumonia
                         elif (transients > 4 or crest_factor > 15 or flux > 1.5) and centroid > 800 and not is_friction_noise:
                              print(f"   🛡️ VETO: AI=Asthma, but Sound is Chaotic (Flux={flux:.2f}, Crest={crest_factor:.1f}). Overriding to Pneumonia.")
                              chunk_diagnosis = "Pneumonia"
@@ -414,11 +415,10 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                 if avg_probs_tensor.dim() > 1: avg_probs_tensor = avg_probs_tensor.squeeze()
                 averaged_probs = {k: float(v) for k, v in zip(CLASSES, avg_probs_tensor)}
                 
-                # 3. HYBRID CONSENSUS LOGIC
+                # HYBRID CONSENSUS
                 p_pneumonia = averaged_probs["Pneumonia"]
                 p_asthma = averaged_probs["Asthma"]
                 
-                # If Physics detected 'Event Types', trust them absolutely.
                 if pneumonia_chunks_detected > asthma_chunks_detected:
                     final_diagnosis = "Pneumonia"
                     averaged_probs["Pneumonia"] = max(p_pneumonia, 0.80)
@@ -427,9 +427,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
                     final_diagnosis = "Asthma"
                     averaged_probs["Asthma"] = max(p_asthma, 0.80)
                 
-                # If Physics is silent, but AI has an opinion:
                 elif p_asthma > 0.5 or p_pneumonia > 0.5:
-                     # Check close contest
                      if abs(p_asthma - p_pneumonia) < 0.2:
                          print(f"   ⚖️ TIE BREAKER: Asthma ({p_asthma:.2f}) vs Pneumonia ({p_pneumonia:.2f})")
                          if detected_wheezes > 0:
