@@ -25,6 +25,15 @@ const Signup = ({ setRole }) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
   const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
+  // 🔹 DARK GLASS INPUT STYLE
+  const glassInputStyle = {
+      background: 'rgba(0, 0, 0, 0.2)', 
+      border: '1px solid rgba(255, 255, 255, 0.1)',
+      color: '#fff',
+      padding: '12px',
+      borderRadius: '8px'
+  };
+
   const registerInBackend = async (user) => {
     const token = await user.getIdToken();
     const response = await axios.post(
@@ -83,18 +92,18 @@ const Signup = ({ setRole }) => {
   };
 
   return (
-    <div className="container-fluid vh-100 d-flex align-items-center justify-content-center p-0">
+    // 🟢 FIX: Use 'min-vh-100' instead of 'vh-100' to allow scrolling on small screens
+    <div className="container-fluid min-vh-100 d-flex align-items-center justify-content-center p-4">
       
       {/* ✨ HERO CARD: Split Layout */}
       <div 
         className="d-flex flex-column flex-md-row overflow-hidden shadow-lg animate-slide-in"
         style={{ 
           maxWidth: '1100px', 
-          width: '90%', 
+          width: '100%', 
           minHeight: '650px',
-          background: 'rgba(255, 255, 255, 0.95)', 
           borderRadius: '24px',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+          boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
         }}
       >
         
@@ -138,96 +147,96 @@ const Signup = ({ setRole }) => {
         </div>
 
         {/* 👉 RIGHT PANEL: Signup Form */}
-        <div className="col-12 col-md-7 p-5 d-flex align-items-center bg-white">
+        <div className="col-12 col-md-7 p-5 d-flex align-items-center" style={{background: '#1e272e'}}>
           <div className="w-100 px-md-4">
             <div className="text-center mb-5">
-              <h3 className="fw-bold text-dark-brown mb-1">Create Account</h3>
-              <p className="text-muted">Register to access the diagnostic tools.</p>
+              <h3 className="fw-bold text-white mb-1">Create Account</h3>
+              <p className="text-white-50">Register to access the diagnostic tools.</p>
             </div>
 
             {error && <div className="alert alert-danger text-center shadow-sm py-2 small border-0 bg-danger text-white mb-4">{error}</div>}
 
             <form onSubmit={handleSignup}>
               <div className="mb-3">
-                <label className="form-label small fw-bold text-muted text-uppercase">Email Address</label>
+                <label className="form-label small fw-bold text-white-50 text-uppercase">Email Address</label>
                 <div className="input-group">
-                  <span className="input-group-text border-0 bg-light"><FaUserMd className="text-muted"/></span>
+                  <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.1)', color: '#ccc'}}><FaUserMd /></span>
                   <input 
                     type="email" 
-                    className="form-control bg-light border-0 py-3" 
+                    className="form-control border-0" 
                     placeholder="doctor@hospital.com"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required 
-                    style={{boxShadow: 'none'}}
+                    style={glassInputStyle}
                   />
                 </div>
               </div>
 
               <div className="mb-3">
-                <label className="form-label small fw-bold text-muted text-uppercase">Password</label>
+                <label className="form-label small fw-bold text-white-50 text-uppercase">Password</label>
                 <div className="input-group">
-                  <span className="input-group-text border-0 bg-light"><FaLock className="text-muted"/></span>
+                  <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.1)', color: '#ccc'}}><FaLock /></span>
                   <input 
                     type="password" 
-                    className="form-control bg-light border-0 py-3" 
+                    className="form-control border-0" 
                     placeholder="••••••••"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required 
-                    style={{boxShadow: 'none'}}
+                    style={glassInputStyle}
                   />
                 </div>
-                <small className="text-muted" style={{fontSize: '0.75rem'}}>
+                <small className="text-white-50" style={{fontSize: '0.75rem'}}>
                    Must include: 8+ chars, uppercase, number, symbol.
                 </small>
               </div>
 
               <div className="mb-4">
-                <label className="form-label small fw-bold text-muted text-uppercase">Confirm Password</label>
+                <label className="form-label small fw-bold text-white-50 text-uppercase">Confirm Password</label>
                 <div className="input-group">
-                  <span className="input-group-text border-0 bg-light"><FaLock className="text-muted"/></span>
+                  <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.1)', color: '#ccc'}}><FaLock /></span>
                   <input 
                     type="password" 
-                    className="form-control bg-light border-0 py-3" 
+                    className="form-control border-0" 
                     placeholder="••••••••"
                     value={formData.confirmPassword}
                     onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                     required 
-                    style={{boxShadow: 'none'}}
+                    style={glassInputStyle}
                   />
                 </div>
               </div>
 
               <button 
                 type="submit" 
-                className="btn btn-dark w-100 py-3 rounded-3 fw-bold shadow-lg d-flex align-items-center justify-content-center mb-3 transition-transform"
+                className="btn w-100 py-3 rounded-3 fw-bold shadow-lg d-flex align-items-center justify-content-center mb-3 transition-transform"
                 disabled={loading}
-                style={{background: '#2c3e50', border: 'none'}}
+                style={{background: '#0984e3', border: 'none', color: '#fff'}}
               >
                 {loading ? 'Registering...' : <>Create Account <FaArrowRight className="ms-2"/></>}
               </button>
             </form>
 
             <div className="d-flex align-items-center mb-4">
-                <hr className="flex-grow-1" style={{borderColor: '#eee'}}/>
-                <span className="mx-3 small text-muted fw-bold">OR</span>
-                <hr className="flex-grow-1" style={{borderColor: '#eee'}}/>
+                <hr className="flex-grow-1" style={{borderColor: 'rgba(255,255,255,0.1)'}}/>
+                <span className="mx-3 small text-white-50 fw-bold">OR</span>
+                <hr className="flex-grow-1" style={{borderColor: 'rgba(255,255,255,0.1)'}}/>
             </div>
 
             <button
                onClick={handleGoogleSignup}
-               className="btn w-100 py-3 rounded-3 shadow-sm d-flex align-items-center justify-content-center mb-4 border"
+               className="btn w-100 py-3 rounded-3 shadow-sm d-flex align-items-center justify-content-center mb-4 border border-secondary"
                disabled={loading}
-               style={{background: '#fff', color: '#444'}}
+               style={{background: 'transparent', color: '#fff'}}
             >
                <FaGoogle className="me-2 text-danger" />
                Sign up with Google
             </button>
 
             <div className="text-center">
-              <small className="text-muted">
-                Already have an account? <Link to="/" className="fw-bold text-dark" style={{textDecoration: 'none'}}>Login Here</Link>
+              <small className="text-white-50">
+                Already have an account? <Link to="/" className="fw-bold text-white" style={{textDecoration: 'none'}}>Login Here</Link>
               </small>
             </div>
           </div>
