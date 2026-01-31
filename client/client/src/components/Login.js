@@ -5,7 +5,7 @@ import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider, resetPassword } from '../firebase';
 import axios from 'axios';
 import { 
-  FaGoogle, FaStethoscope, FaChartLine, FaShieldAlt, 
+  FaGoogle, FaStethoscope, FaShieldAlt, 
   FaUserMd, FaLock, FaArrowRight, FaBrain 
 } from 'react-icons/fa';
 import config from '../config';
@@ -17,16 +17,6 @@ const Login = ({ setRole }) => {
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Matches your transparent glass theme
-  const glassInputStyle = {
-    background: 'rgba(255, 255, 255, 0.45)', 
-    border: '1px solid rgba(255, 255, 255, 0.6)',
-    color: '#2d3436',
-    borderRadius: '12px',
-    padding: '12px',
-    backdropFilter: 'blur(6px)'
-  };
 
   const executeLogin = async (user) => {
     try {
@@ -40,7 +30,7 @@ const Login = ({ setRole }) => {
       );
 
       const { role } = response.data;
-      if (setRole) setRole(role); // Guard check in case prop is missing
+      if (setRole) setRole(role); 
       navigate(role === 'CHW' ? '/chw' : '/doctor');
     } catch (err) {
       console.error("Login Error:", err);
@@ -102,64 +92,63 @@ const Login = ({ setRole }) => {
   return (
     <div className="container-fluid vh-100 d-flex align-items-center justify-content-center p-0">
       
-      {/* ✨ HERO CARD: Split Layout (Glass + Dark Brand Panel) */}
+      {/* ✨ HERO CARD: Split Layout */}
       <div 
         className="d-flex flex-column flex-md-row overflow-hidden shadow-lg animate-slide-in"
         style={{ 
           maxWidth: '1100px', 
           width: '90%', 
           minHeight: '650px',
-          background: 'rgba(255, 255, 255, 0.95)', // Solid background for readability
+          background: 'rgba(255, 255, 255, 0.95)', 
           borderRadius: '24px',
           boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
         }}
       >
         
-        {/* 👈 LEFT PANEL: Modern Health Teal Gradient */}
+        {/* 👈 LEFT PANEL: "Clinical Navy" (Professional, not AI-looking) */}
         <div className="col-12 col-md-5 p-5 d-flex flex-column justify-content-center text-white position-relative overflow-hidden" 
              style={{
-               /* 🟢 UPDATED GRADIENT: Option 1 (Teal) */
-               background: 'linear-gradient(135deg, #134E5E 0%, #71B280 100%)', 
+               /* 🟢 UPDATED: Solid, Deep Medical Navy. Trustworthy and corporate. */
+               background: '#1a2b3c', 
+               background: 'linear-gradient(160deg, #1a2b3c 0%, #2c3e50 100%)'
              }}>
           
-          {/* Decorative Background Circles */}
-          <div style={{position: 'absolute', top: '-50px', left: '-50px', width: '200px', height: '200px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%'}}></div>
-          <div style={{position: 'absolute', bottom: '-20px', right: '-20px', width: '150px', height: '150px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%'}}></div>
+          {/* Subtle geometric lines instead of glowy orbs (More professional) */}
+          <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'url("https://www.transparenttextures.com/patterns/cubes.png")', opacity: 0.05}}></div>
 
           <div className="mb-5 position-relative z-1">
-            <div className="d-inline-flex align-items-center justify-content-center bg-white text-dark rounded-4 mb-4 shadow-lg" style={{width: '64px', height: '64px'}}>
-              <FaStethoscope size={32} className="text-primary" />
+            <div className="d-inline-flex align-items-center justify-content-center bg-white text-dark rounded-3 mb-4 shadow-sm" style={{width: '64px', height: '64px'}}>
+              <FaStethoscope size={28} className="text-dark" />
             </div>
             <h1 className="fw-bold display-5 mb-2">SautiYaAfya</h1>
-            <p className="lead fw-light opacity-75 mb-0">The "Two-Brain" AI Triage System</p>
+            <p className="lead fw-light opacity-75 mb-0">Pediatric Respiratory Triage</p>
           </div>
 
-          <div className="d-flex flex-column gap-4 position-relative z-1">
+          <div className="d-flex flex-column gap-5 position-relative z-1">
+            
+            {/* Item 1 */}
             <div className="d-flex">
-              <div className="me-3"><FaBrain className="fs-4 text-white" /></div>
+              <div className="me-3"><FaBrain className="fs-4 text-white opacity-75" /></div>
               <div>
-                <h6 className="fw-bold mb-1">Dual-Engine Intelligence</h6>
-                <p className="small opacity-75 mb-0">Combining ResNet50 deep learning with clinical logic.</p>
+                <h6 className="fw-bold mb-1">Clinical Decision Support</h6>
+                <p className="small opacity-75 mb-0">Assists clinicians by analyzing lung sounds using standard medical algorithms.</p>
               </div>
             </div>
+
+            {/* 🗑️ REMOVED: 98% Accuracy Claim */}
+            
+            {/* Item 2 */}
             <div className="d-flex">
-              <div className="me-3"><FaChartLine className="fs-4 text-white" /></div>
+              <div className="me-3"><FaShieldAlt className="fs-4 text-white opacity-75" /></div>
               <div>
-                <h6 className="fw-bold mb-1">98% Diagnostic Accuracy</h6>
-                <p className="small opacity-75 mb-0">Precision audio analysis for Pneumonia & Asthma.</p>
-              </div>
-            </div>
-            <div className="d-flex">
-              <div className="me-3"><FaShieldAlt className="fs-4 text-warning" /></div>
-              <div>
-                <h6 className="fw-bold mb-1">Secure & Encrypted</h6>
-                <p className="small opacity-75 mb-0">Patient data is protected by enterprise-grade security.</p>
+                <h6 className="fw-bold mb-1">HIPAA Compliant Architecture</h6>
+                <p className="small opacity-75 mb-0">End-to-end encryption ensures patient data remains private and secure.</p>
               </div>
             </div>
           </div>
 
           <div className="mt-auto pt-5 opacity-50 small">
-            &copy; 2026 SautiYaAfya Research • Defense Build v2.0
+            &copy; 2026 SautiYaAfya Research • System v2.0.4
           </div>
         </div>
 
@@ -167,8 +156,8 @@ const Login = ({ setRole }) => {
         <div className="col-12 col-md-7 p-5 d-flex align-items-center bg-white">
           <div className="w-100 px-md-4">
             <div className="text-center mb-5">
-              <h3 className="fw-bold text-dark-brown mb-1">Welcome Back</h3>
-              <p className="text-muted">Enter your credentials to access the secure portal.</p>
+              <h3 className="fw-bold text-dark-brown mb-1">Authorized Access</h3>
+              <p className="text-muted">Please authenticate to continue.</p>
             </div>
 
             {error && <div className="alert alert-danger text-center shadow-sm py-2 small border-0 bg-danger text-white mb-4">{error}</div>}
@@ -215,11 +204,11 @@ const Login = ({ setRole }) => {
 
               <button 
                 type="submit" 
-                className="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-lg d-flex align-items-center justify-content-center mb-3 transition-transform"
+                className="btn btn-dark w-100 py-3 rounded-3 fw-bold shadow-lg d-flex align-items-center justify-content-center mb-3 transition-transform"
                 disabled={loading}
-                style={{background: 'linear-gradient(45deg, #0984e3, #00b894)', border: 'none'}}
+                style={{background: '#2c3e50', border: 'none'}} // Matched to brand panel
               >
-                {loading ? 'Authenticating...' : <>Access Dashboard <FaArrowRight className="ms-2"/></>}
+                {loading ? 'Verifying Credentials...' : <>Log In <FaArrowRight className="ms-2"/></>}
               </button>
             </form>
 
@@ -241,7 +230,7 @@ const Login = ({ setRole }) => {
 
             <div className="text-center">
               <small className="text-muted">
-                Don't have an account? <Link to="/signup" className="fw-bold text-primary" style={{textDecoration: 'none'}}>Register Now</Link>
+                Need access? <Link to="/signup" className="fw-bold text-dark" style={{textDecoration: 'none'}}>Request Account</Link>
               </small>
             </div>
           </div>
