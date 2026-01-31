@@ -5,13 +5,14 @@ import { FaArrowLeft, FaRobot, FaLock, FaServer, FaSlidersH } from 'react-icons/
 import axios from 'axios';
 import { auth } from '../firebase';
 import { useTranslation } from '../hooks/useTranslation';
+import config from '../config'; // 🟢 IMPORT CONFIG FOR LIVE URL
 
 const AdminConfig = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   
-  const [config, setConfig] = useState({
+  const [currentConfig, setCurrentConfig] = useState({
     ai_model: 'Llama 3.3 (v2.3) + Librosa DSP',
     confidence_threshold: 0.75,
     export_moh: false,
@@ -30,10 +31,11 @@ const AdminConfig = () => {
     const fetchConfig = async () => {
       try {
         const token = await auth.currentUser.getIdToken();
-        const res = await axios.get('http://localhost:5000/api/settings', {
+        // 🟢 FIX: Use config.API_BASE_URL
+        const res = await axios.get(`${config.API_BASE_URL}/settings`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setConfig(prev => ({ ...prev, ...res.data }));
+        setCurrentConfig(prev => ({ ...prev, ...res.data }));
       } catch (err) {
         console.error("Load failed", err);
       } finally {
@@ -44,10 +46,11 @@ const AdminConfig = () => {
   }, []);
 
   const saveConfig = async (newConfig) => {
-    setConfig(newConfig); 
+    setCurrentConfig(newConfig); 
     try {
       const token = await auth.currentUser.getIdToken();
-      await axios.put('http://localhost:5000/api/settings', 
+      // 🟢 FIX: Use config.API_BASE_URL
+      await axios.put(`${config.API_BASE_URL}/settings`, 
         newConfig, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -57,11 +60,11 @@ const AdminConfig = () => {
   };
 
   const handleToggle = (key) => {
-    saveConfig({ ...config, [key]: !config[key] });
+    saveConfig({ ...currentConfig, [key]: !currentConfig[key] });
   };
 
   const handleSliderChange = (e) => {
-    saveConfig({ ...config, confidence_threshold: parseFloat(e.target.value) });
+    saveConfig({ ...currentConfig, confidence_threshold: parseFloat(e.target.value) });
   };
 
   if (loading) return <div className="p-5 text-center text-white">Loading Admin Config...</div>;
@@ -100,7 +103,7 @@ const AdminConfig = () => {
                         type="text" 
                         className="form-control" 
                         style={glassInputStyle} 
-                        value={config.ai_model} 
+                        value={currentConfig.ai_model} 
                         readOnly 
                     />
                 </div>
@@ -110,7 +113,7 @@ const AdminConfig = () => {
             <div className="mb-5 bg-dark bg-opacity-25 p-3 rounded border border-secondary">
                 <label className="form-label fw-bold d-flex justify-content-between align-items-center text-white mb-3">
                     <span>{t('confidence_threshold')}</span>
-                    <span className="badge bg-primary shadow-sm" style={{fontSize: '1rem'}}>{config.confidence_threshold}</span>
+                    <span className="badge bg-primary shadow-sm" style={{fontSize: '1rem'}}>{currentConfig.confidence_threshold}</span>
                 </label>
                 <input 
                     type="range" 
@@ -118,7 +121,7 @@ const AdminConfig = () => {
                     min="0.5" 
                     max="0.99" 
                     step="0.01" 
-                    value={config.confidence_threshold}
+                    value={currentConfig.confidence_threshold}
                     onChange={handleSliderChange}
                 />
                 <div className="d-flex justify-content-between small text-white-50 fw-bold mt-2">
@@ -137,7 +140,7 @@ const AdminConfig = () => {
                         className="form-check-input" 
                         type="checkbox" 
                         style={{width: '3em', height: '1.5em'}}
-                        checked={config.export_moh}
+                        checked={currentConfig.export_moh}
                         onChange={() => handleToggle('export_moh')}
                     />
                 </div>
@@ -150,7 +153,7 @@ const AdminConfig = () => {
                         className="form-check-input" 
                         type="checkbox" 
                         style={{width: '3em', height: '1.5em'}}
-                        checked={config.retain_logs}
+                        checked={currentConfig.retain_logs}
                         onChange={() => handleToggle('retain_logs')}
                     />
                 </div>

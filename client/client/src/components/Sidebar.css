@@ -1,123 +1,117 @@
-/* client/src/components/Sidebar.css */
+/* client/src/index.css */
 
-/* 1. DESKTOP SIDEBAR (Default) */
-.sidebar {
-  width: 260px;
-  /* 🟢 UPDATED: Dark Ghost Base */
-  background: rgba(0, 0, 0, 0.2); 
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-right: 1px solid rgba(255, 255, 255, 0.1); /* Subtle white border */
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding: 1.5rem;
-  transition: transform 0.3s ease-in-out;
-  z-index: 1000;
-}
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.15);
+  --glass-card-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 
-/* Hide Mobile Elements on Desktop */
-.mobile-toggle-btn, .mobile-overlay {
-  display: none;
-}
-
-/* Navigation Links Styling */
-.nav-link {
-  /* 🟢 UPDATED: White text for Dark Mode */
-  color: rgba(255, 255, 255, 0.6) !important;
-  font-weight: 500;
-  padding: 12px 15px;
-  border-radius: 12px;
-  margin-bottom: 5px;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  text-decoration: none;
-}
-
-/* Hover State */
-.nav-link:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff !important;
-  transform: translateX(5px);
-}
-
-/* Active State (Selected Tab) */
-.nav-link.active {
-  /* 🟢 UPDATED: Blue Glass Effect */
-  background: rgba(9, 132, 227, 0.25); 
-  color: #fff !important;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(9, 132, 227, 0.4);
-  font-weight: 700;
-}
-
-/* Icon Colors */
-.nav-link svg {
-    opacity: 0.7;
-    transition: opacity 0.2s;
-}
-.nav-link.active svg {
-    opacity: 1;
-    color: #74b9ff; /* Light blue accent for active icon */
-}
-
-/* =================================================
-   📱 MOBILE RESPONSIVENESS (Max-Width: 768px)
-   ================================================= */
-@media (max-width: 768px) {
+  --accent-green: #00b894;
+  --accent-blue: #0984e3;
   
-  /* 1. Sidebar becomes a Drawer */
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: 100vh;
-    width: 280px;
-    transform: translateX(-100%); /* Hide off-screen left */
-    box-shadow: 10px 0 30px rgba(0,0,0,0.5);
-    /* 🟢 UPDATED: Solid Dark Blue for Mobile Readability */
+  /* Text Colors */
+  --text-main: #f1f2f6;      
+  --text-medical: #dfe6e9;   
+  --text-muted: #b2bec3;     
+}
+
+/* 1. Dark Background Base */
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  color: var(--text-main);
+  
+  /* Dark Navy Overlay (0.85) for High Contrast */
+  background: 
+    linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.85)),
+    url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
+    no-repeat center center fixed;
+  background-size: cover;
+}
+
+body::before { display: none; }
+
+/* 2. Glass Window (The Main Frame) */
+.glass-window {
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 24px;
+  min-height: 90vh; 
+  width: 95vw;
+  margin: 5vh auto;
+  display: flex;
+  overflow: hidden; 
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5); 
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* 3. Global Glass Card (Inner Panels) */
+.glass-card {
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  color: var(--text-main);
+}
+
+/* 4. Settings List & Bootstrap Overrides */
+.list-group-item {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: var(--text-main) !important;
+  backdrop-filter: blur(5px);
+  margin-bottom: 8px;
+  border-radius: 10px !important;
+}
+
+.list-group-item:hover, .list-group-item-action:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #fff !important;
+  cursor: pointer;
+}
+
+/* 5. Inputs (Ghost Style) */
+.form-control, .form-select {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.form-control::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.form-control:focus {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 0 0.25rem rgba(9, 132, 227, 0.25);
+}
+
+/* 6. Utility Colors */
+.text-dark-brown { color: var(--text-main) !important; }
+.text-muted { color: var(--text-muted) !important; }
+
+/* 📱 MOBILE FIX: Ensure Dark Background on Phones */
+@media (max-width: 768px) {
+  .glass-window {
+    width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+    flex-direction: column;
+    /* 🟢 UPDATED: Solid Dark Navy matches the sidebar and login page */
     background: #1e272e; 
-    border-right: 1px solid rgba(255, 255, 255, 0.1);
   }
+}
 
-  /* 2. Class to Slide it In */
-  .sidebar.open {
-    transform: translateX(0);
-  }
-
-  /* 3. The Hamburger Button */
-  .mobile-toggle-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: fixed;
-    top: 15px;
-    right: 15px;
-    width: 45px;
-    height: 45px;
-    border-radius: 50%;
-    z-index: 1100;
-    /* 🟢 UPDATED: Dark Glass Button */
-    background: rgba(0, 0, 0, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(5px);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-    color: #fff;
-    cursor: pointer;
-  }
-
-  /* 4. Dark Overlay Background */
-  .mobile-overlay {
-    display: none;
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.8); /* Darker Dim */
-    z-index: 900;
-    backdrop-filter: blur(4px);
-  }
-
-  .mobile-overlay.open {
-    display: block;
-  }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
 }
