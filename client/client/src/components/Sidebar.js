@@ -4,7 +4,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   FaUserMd, FaChartPie, FaGlobeAfrica, FaCog, 
   FaSignOutAlt, FaBars, FaTimes, FaUserInjured,
-  FaBook 
+  FaBook, FaUserShield 
 } from 'react-icons/fa'; 
 import './Sidebar.css'; 
 
@@ -14,9 +14,9 @@ const Sidebar = ({ role, onLogout }) => {
   const toggle = () => setIsOpen(!isOpen);
   const closeMenu = () => setIsOpen(false);
 
-  // 🔹 GHOST MODE STYLE (Matches New Dark Theme)
+  // 🔹 GHOST MODE STYLE
   const sidebarStyle = {
-    background: 'rgba(255, 255, 255, 0.05)',
+    background: 'rgba(0, 0, 0, 0.2)',
     borderRight: '1px solid rgba(255, 255, 255, 0.1)',
     backdropFilter: 'none', 
   };
@@ -42,7 +42,7 @@ const Sidebar = ({ role, onLogout }) => {
            <div style={{
              width:'35px', 
              height:'35px', 
-             background:'#0984e3', // Matches Accent Blue
+             background:'#0984e3', 
              borderRadius:'8px', 
              display:'flex', 
              alignItems:'center', 
@@ -50,21 +50,28 @@ const Sidebar = ({ role, onLogout }) => {
              marginRight:'10px', 
              color:'white'
            }}>
-             <FaUserMd />
+             {role === 'ADMIN' ? <FaUserShield /> : <FaUserMd />}
            </div>
            <div>
              <h5 className="mb-0 fw-bold text-white">SautiYaAfya</h5>
-             <small className="text-white-50" style={{fontSize:'0.7rem'}}>AI TRIAGE SYSTEM</small>
+             <small className="text-white-50" style={{fontSize:'0.7rem'}}>
+               {role === 'ADMIN' ? 'ADMIN PANEL' : 'AI TRIAGE SYSTEM'}
+             </small>
            </div>
         </div>
         
         {/* NAV LINKS */}
         <div className="nav flex-column mb-auto">
-          {/* 🟢 FIX: Added 'text-white-50' to nav links to make them visible on dark bg.
-             Active state (handled by NavLink 'active' class) usually turns them solid white/blue via CSS,
-             but this ensures the inactive state is readable.
-          */}
-          {role === 'DOCTOR' || role === 'ADMIN' ? (
+          
+          {/* 🔴 ADMIN VIEW: Dashboard Only (No Clinical Data) */}
+          {role === 'ADMIN' && (
+            <NavLink to="/admin" onClick={closeMenu} className="nav-link text-white-50" end>
+              <FaUserShield className="me-3" /> Dashboard
+            </NavLink>
+          )}
+
+          {/* 🔵 DOCTOR VIEW: Dashboard + Patients + Analytics */}
+          {role === 'DOCTOR' && (
             <>
               <NavLink to="/doctor" onClick={closeMenu} className="nav-link text-white-50" end>
                 <FaGlobeAfrica className="me-3" /> Dashboard
@@ -78,7 +85,10 @@ const Sidebar = ({ role, onLogout }) => {
                 <FaChartPie className="me-3" /> Analytics
               </NavLink>
             </>
-          ) : (
+          )}
+
+          {/* 🟢 CHW VIEW */}
+          {role === 'CHW' && (
             <NavLink to="/chw" onClick={closeMenu} className="nav-link text-white-50" end>
               <FaUserMd className="me-3" /> New Screening
             </NavLink>
