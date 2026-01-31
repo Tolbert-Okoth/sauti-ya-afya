@@ -99,15 +99,16 @@ const Login = ({ setRole }) => {
   };
 
   return (
-    <div className="container-fluid vh-100 d-flex align-items-center justify-content-center p-0">
+    // 🟢 FIX: Changed vh-100 to min-vh-100 and added padding (p-4) to allow scrolling on small screens
+    <div className="container-fluid min-vh-100 d-flex align-items-center justify-content-center p-4">
       
       {/* ✨ HERO CARD: Split Layout (Dark Mode) */}
       <div 
         className="d-flex flex-column flex-md-row overflow-hidden shadow-lg animate-slide-in"
         style={{ 
           maxWidth: '1000px', 
-          width: '90%', 
-          minHeight: '600px', // Reduced height to fit screens better
+          width: '100%', 
+          minHeight: '600px', // Ensures card has substance but can grow
           borderRadius: '24px',
           boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
         }}

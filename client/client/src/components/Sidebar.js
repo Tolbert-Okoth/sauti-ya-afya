@@ -53,41 +53,44 @@ const Sidebar = ({ role, onLogout }) => {
              <FaUserMd />
            </div>
            <div>
-             {/* 🟢 FIX: Changed text color to White for Dark Mode */}
              <h5 className="mb-0 fw-bold text-white">SautiYaAfya</h5>
-             <small className="text-muted" style={{fontSize:'0.7rem'}}>AI TRIAGE SYSTEM</small>
+             <small className="text-white-50" style={{fontSize:'0.7rem'}}>AI TRIAGE SYSTEM</small>
            </div>
         </div>
         
         {/* NAV LINKS */}
         <div className="nav flex-column mb-auto">
+          {/* 🟢 FIX: Added 'text-white-50' to nav links to make them visible on dark bg.
+             Active state (handled by NavLink 'active' class) usually turns them solid white/blue via CSS,
+             but this ensures the inactive state is readable.
+          */}
           {role === 'DOCTOR' || role === 'ADMIN' ? (
             <>
-              <NavLink to="/doctor" onClick={closeMenu} className="nav-link" end>
+              <NavLink to="/doctor" onClick={closeMenu} className="nav-link text-white-50" end>
                 <FaGlobeAfrica className="me-3" /> Dashboard
               </NavLink>
 
-              <NavLink to="/doctor/patients" onClick={closeMenu} className="nav-link">
+              <NavLink to="/doctor/patients" onClick={closeMenu} className="nav-link text-white-50">
                 <FaUserInjured className="me-3" /> Patients List
               </NavLink>
 
-              <NavLink to="/doctor/analytics" onClick={closeMenu} className="nav-link">
+              <NavLink to="/doctor/analytics" onClick={closeMenu} className="nav-link text-white-50">
                 <FaChartPie className="me-3" /> Analytics
               </NavLink>
             </>
           ) : (
-            <NavLink to="/chw" onClick={closeMenu} className="nav-link" end>
+            <NavLink to="/chw" onClick={closeMenu} className="nav-link text-white-50" end>
               <FaUserMd className="me-3" /> New Screening
             </NavLink>
           )}
           
           <div className="my-2 border-top" style={{borderColor: 'rgba(255,255,255,0.1)'}}></div>
 
-          <NavLink to="/guide" onClick={closeMenu} className="nav-link">
+          <NavLink to="/guide" onClick={closeMenu} className="nav-link text-white-50">
             <FaBook className="me-3" /> User Guide
           </NavLink>
 
-          <NavLink to="/settings" onClick={closeMenu} className="nav-link">
+          <NavLink to="/settings" onClick={closeMenu} className="nav-link text-white-50">
             <FaCog className="me-3" /> Settings
           </NavLink>
         </div>

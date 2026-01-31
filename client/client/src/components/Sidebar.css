@@ -3,10 +3,11 @@
 /* 1. DESKTOP SIDEBAR (Default) */
 .sidebar {
   width: 260px;
-  background: rgba(255, 255, 255, 0.65); /* ❄️ Glass Effect */
+  /* 🟢 UPDATED: Dark Ghost Base */
+  background: rgba(0, 0, 0, 0.2); 
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-right: 1px solid rgba(255, 255, 255, 0.8);
+  border-right: 1px solid rgba(255, 255, 255, 0.1); /* Subtle white border */
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -22,27 +23,43 @@
 
 /* Navigation Links Styling */
 .nav-link {
-  color: #2c3e50;
+  /* 🟢 UPDATED: White text for Dark Mode */
+  color: rgba(255, 255, 255, 0.6) !important;
   font-weight: 500;
-  padding: 10px 15px;
+  padding: 12px 15px;
   border-radius: 12px;
   margin-bottom: 5px;
   transition: all 0.2s;
   display: flex;
   align-items: center;
+  text-decoration: none;
 }
 
+/* Hover State */
 .nav-link:hover {
-  background: rgba(255, 255, 255, 0.5);
-  color: #0984e3;
-  transform: translateX(3px);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff !important;
+  transform: translateX(5px);
 }
 
+/* Active State (Selected Tab) */
 .nav-link.active {
-  background: white;
-  color: #0984e3;
-  box-shadow: 0 4px 10px rgba(9, 132, 227, 0.15);
+  /* 🟢 UPDATED: Blue Glass Effect */
+  background: rgba(9, 132, 227, 0.25); 
+  color: #fff !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(9, 132, 227, 0.4);
   font-weight: 700;
+}
+
+/* Icon Colors */
+.nav-link svg {
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+.nav-link.active svg {
+    opacity: 1;
+    color: #74b9ff; /* Light blue accent for active icon */
 }
 
 /* =================================================
@@ -58,8 +75,10 @@
     height: 100vh;
     width: 280px;
     transform: translateX(-100%); /* Hide off-screen left */
-    box-shadow: 4px 0 15px rgba(0,0,0,0.1);
-    background: rgba(255, 255, 255, 0.95); /* More solid on phone */
+    box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+    /* 🟢 UPDATED: Solid Dark Blue for Mobile Readability */
+    background: #1e272e; 
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   /* 2. Class to Slide it In */
@@ -79,10 +98,12 @@
     height: 45px;
     border-radius: 50%;
     z-index: 1100;
-    background: white;
-    border: none;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    color: #333;
+    /* 🟢 UPDATED: Dark Glass Button */
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(5px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    color: #fff;
     cursor: pointer;
   }
 
@@ -91,9 +112,9 @@
     display: none;
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.8); /* Darker Dim */
     z-index: 900;
-    backdrop-filter: blur(2px);
+    backdrop-filter: blur(4px);
   }
 
   .mobile-overlay.open {
