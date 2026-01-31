@@ -13,7 +13,7 @@ const AdminConfig = () => {
   const [loading, setLoading] = useState(true);
   
   const [currentConfig, setCurrentConfig] = useState({
-    ai_model: 'Llama 3.3 (v2.3) + Librosa DSP',
+    ai_model: 'Llama 3.3 + FFmpeg + torchaudio + NumPy + PyTorch',
     confidence_threshold: 0.75,
     export_moh: false,
     retain_logs: true

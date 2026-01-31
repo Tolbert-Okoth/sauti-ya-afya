@@ -55,7 +55,7 @@ const ProfileSettings = ({ role }) => {
             </div>
             <div>
                 <label className="small text-muted d-block text-uppercase fw-bold" style={{fontSize: '0.7rem'}}>Assigned Jurisdiction</label>
-                <span className="fw-bold text-white">Turkana County (Default)</span>
+                <span className="fw-bold text-white">Kenya(Default)</span>
             </div>
         </div>
       </div>

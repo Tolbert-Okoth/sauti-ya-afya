@@ -22,7 +22,7 @@ const Footer = () => {
           Results are preliminary and must be verified by a qualified clinical officer. 
         </p>
         <p className="mb-0 opacity-50 text-white-50" style={{fontSize: '0.65rem', marginTop:'4px'}}>
-          v2.0.4 (Defense Build) • Powered by PyTorch & Librosa • © 2026 SautiYaAfya Research
+          v2.0.4 (Defense Build) • Powered by FFmpeg + torchaudio + NumPy + PyTorch • © 2026 SautiYaAfya Research
         </p>
       </div>
     </div>
