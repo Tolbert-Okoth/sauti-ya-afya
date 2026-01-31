@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { auth } from '../firebase';
 import { FaCheckCircle, FaHourglassHalf, FaExternalLinkAlt, FaUserInjured, FaArrowRight } from 'react-icons/fa';
+import config from '../config'; // 🟢 IMPORT CONFIG FOR LIVE URL
 
 const Referrals = () => {
   const [referrals, setReferrals] = useState([]);
@@ -12,7 +13,8 @@ const Referrals = () => {
     const fetchReferrals = async () => {
       try {
         const token = await auth.currentUser.getIdToken();
-        const res = await axios.get('http://localhost:5000/api/patients', {
+        // 🟢 FIX: Use config.API_BASE_URL instead of localhost
+        const res = await axios.get(`${config.API_BASE_URL}/patients`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         

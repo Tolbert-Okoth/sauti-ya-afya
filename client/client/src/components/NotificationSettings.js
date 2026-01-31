@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { FaArrowLeft, FaBell, FaWhatsapp, FaExclamationTriangle } from 'react-icons/fa';
 import axios from 'axios';
 import { auth } from '../firebase';
+import config from '../config'; // 🟢 IMPORT CONFIG FOR LIVE URL
 
 const NotificationSettings = () => {
   const navigate = useNavigate();
@@ -13,7 +14,8 @@ const NotificationSettings = () => {
     const fetchSettings = async () => {
       try {
         const token = await auth.currentUser.getIdToken();
-        const res = await axios.get('http://localhost:5000/api/settings', {
+        // 🟢 FIX: Use config.API_BASE_URL
+        const res = await axios.get(`${config.API_BASE_URL}/settings`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setEnabled(res.data.notifications_enabled);
@@ -29,7 +31,8 @@ const NotificationSettings = () => {
     setEnabled(newValue);
     try {
       const token = await auth.currentUser.getIdToken();
-      await axios.put('http://localhost:5000/api/settings', 
+      // 🟢 FIX: Use config.API_BASE_URL
+      await axios.put(`${config.API_BASE_URL}/settings`, 
         { notifications_enabled: newValue }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
