@@ -1,17 +1,21 @@
 /* client/src/index.css */
 
 :root {
-  --glass-bg: rgba(255, 255, 255, 0.75);
-  --glass-card-bg: rgba(255, 255, 255, 0.5);
-  --glass-border: 1px solid rgba(255, 255, 255, 0.8);
-  --glass-shadow: 0 8px 32px rgba(14, 33, 62, 0.15);
+  --glass-bg: rgba(255, 255, 255, 0.15);
+  --glass-card-bg: rgba(255, 255, 255, 0.1);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.2);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+
   --accent-green: #00b894;
   --accent-blue: #0984e3;
-  --text-main: #2d3436;
-  --text-medical: #2c3e50;
+  
+  /* 🟢 UPDATE: Text Colors flipped to White for Dark Mode */
+  --text-main: #f1f2f6;      /* Bright White */
+  --text-medical: #dfe6e9;   /* Soft White */
+  --text-muted: #b2bec3;     /* Light Grey */
 }
 
-/* 1. Base Setup */
+/* 1. Dark Background Base */
 html, body {
   margin: 0;
   padding: 0;
@@ -20,25 +24,21 @@ html, body {
   min-height: 100vh;
   overflow-x: hidden;
   color: var(--text-main);
-  background: url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
+  
+  /* Dark Navy Overlay (0.85) for High Contrast */
+  background: 
+    linear-gradient(rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0.85)),
+    url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
     no-repeat center center fixed;
   background-size: cover;
 }
 
-body::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgba(10, 61, 98, 0.25);
-  z-index: -1;
-  min-height: 100vh;
-}
+body::before { display: none; }
 
-/* 🟢 FIX 1: Make the Outer Window CLEAR (Ghost Frame) */
+/* 2. Glass Window (The Main Frame) */
 .glass-window {
-  /* Reduced from 0.35 to 0.15 to stop the "Milky" effect */
-  background: rgba(255, 255, 255, 0.15); 
-  backdrop-filter: blur(20px); /* Increased blur for better readability */
+  background: rgba(0, 0, 0, 0.2); /* Slight dark tint instead of white */
+  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-radius: 24px;
   min-height: 90vh; 
@@ -46,10 +46,59 @@ body::before {
   margin: 5vh auto;
   display: flex;
   overflow: hidden; 
-  box-shadow: 0 8px 32px rgba(14, 33, 62, 0.25); /* Stronger shadow for contrast */
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.5); 
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+/* 3. Global Glass Card (Inner Panels) */
+.glass-card {
+  background: rgba(255, 255, 255, 0.05) !important; /* Very subtle */
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  color: var(--text-main);
+}
+
+/* 4. 🟢 FIX: Settings List & Bootstrap Overrides */
+/* This removes the solid white background from the list items */
+.list-group-item {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: var(--text-main) !important;
+  backdrop-filter: blur(5px);
+  margin-bottom: 8px; /* Space them out */
+  border-radius: 10px !important; /* Rounded edges */
+}
+
+/* Hover effect for settings items */
+.list-group-item:hover, .list-group-item-action:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #fff !important;
+  cursor: pointer;
+}
+
+/* 5. Inputs (Ghost Style) */
+.form-control, .form-select {
+  background: rgba(0, 0, 0, 0.2) !important; /* Dark glass inputs */
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.form-control::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+.form-control:focus {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-color: var(--accent-blue) !important;
+  box-shadow: 0 0 0 0.25rem rgba(9, 132, 227, 0.25);
+}
+
+/* 6. Utility Colors */
+.text-dark-brown { color: var(--text-main) !important; }
+.text-muted { color: var(--text-muted) !important; }
+
+/* Mobile Fix */
 @media (max-width: 768px) {
   .glass-window {
     width: 100%;
@@ -58,29 +107,12 @@ body::before {
     border-radius: 0;
     border: none;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.85); /* Mobile needs to be readable */
+    background: rgba(15, 23, 42, 0.95); /* Solid dark on mobile */
   }
 }
 
-/* 🟢 FIX 2: Global Card Transparency (The Real Ghost Mode) */
-/* This forces all cards inside the window to be subtle */
-.glass-card {
-  background: rgba(255, 255, 255, 0.1) !important; /* Force 10% opacity */
-  backdrop-filter: none !important; /* Let parent blur handle it */
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 16px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-}
-
-.text-dark-brown {
-  color: var(--text-medical) !important;
-}
-
-::-webkit-scrollbar {
-  width: 6px;
-}
-
+::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(9, 132, 227, 0.4);
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 10px;
 }
