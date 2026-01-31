@@ -12,7 +12,7 @@
   --text-medical: #2c3e50;
 }
 
-/* 🟢 FIX: Darkened Background Image */
+/* 🟢 FIX: Balanced Background Image (0.6 Opacity) */
 html, body {
   margin: 0;
   padding: 0;
@@ -22,12 +22,11 @@ html, body {
   overflow-x: hidden;
   color: var(--text-main);
   
-  /* Here is the magic:
-     1. We add a dark blue/black gradient (0.7 opacity) ON TOP of the image.
-     2. This makes the white glass cards pop immediately.
+  /* Adjusted to 0.6 opacity.
+     This allows more light than 0.7, but keeps enough contrast for the UI.
   */
   background: 
-    linear-gradient(rgba(10, 25, 45, 0.7), rgba(10, 25, 45, 0.7)),
+    linear-gradient(rgba(10, 25, 45, 0.6), rgba(10, 25, 45, 0.6)),
     url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
     no-repeat center center fixed;
     
@@ -50,7 +49,7 @@ body::before {
   margin: 5vh auto;
   display: flex;
   overflow: hidden; 
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); /* Darker shadow */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); /* Stronger shadow for depth */
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 

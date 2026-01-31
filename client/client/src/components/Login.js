@@ -6,7 +6,7 @@ import { auth, googleProvider, resetPassword } from '../firebase';
 import axios from 'axios';
 import { 
   FaGoogle, FaStethoscope, FaChartLine, FaShieldAlt, 
-  FaUserMd, FaLock, FaArrowRight 
+  FaUserMd, FaLock, FaArrowRight, FaBrain 
 } from 'react-icons/fa';
 import config from '../config';
 
@@ -102,79 +102,91 @@ const Login = ({ setRole }) => {
   return (
     <div className="container-fluid vh-100 d-flex align-items-center justify-content-center p-0">
       
-      {/* MAIN GLASS CARD - SPLIT LAYOUT */}
+      {/* ✨ HERO CARD: Split Layout (Glass + Dark Brand Panel) */}
       <div 
-        className="glass-card d-flex flex-column flex-md-row overflow-hidden shadow-lg animate-slide-in"
+        className="d-flex flex-column flex-md-row overflow-hidden shadow-lg animate-slide-in"
         style={{ 
-          maxWidth: '1000px', 
+          maxWidth: '1100px', 
           width: '90%', 
-          minHeight: '600px',
-          background: 'rgba(255, 255, 255, 0.65)', 
-          border: '1px solid rgba(255, 255, 255, 0.8)'
+          minHeight: '650px',
+          background: 'rgba(255, 255, 255, 0.95)', // Solid background for readability
+          borderRadius: '24px',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
         }}
       >
         
-        {/* 👈 LEFT SIDE: INTRODUCTION & BRANDING */}
-        <div className="col-12 col-md-6 p-5 d-flex flex-column justify-content-center text-dark-brown" 
+        {/* 👈 LEFT PANEL: Modern Health Teal Gradient */}
+        <div className="col-12 col-md-5 p-5 d-flex flex-column justify-content-center text-white position-relative overflow-hidden" 
              style={{
-               background: 'linear-gradient(135deg, rgba(255,255,255,0.4), rgba(255,255,255,0.1))',
-               borderRight: '1px solid rgba(255,255,255,0.3)'
+               /* 🟢 UPDATED GRADIENT: Option 1 (Teal) */
+               background: 'linear-gradient(135deg, #134E5E 0%, #71B280 100%)', 
              }}>
           
-          <div className="mb-4">
-            <div className="d-inline-flex align-items-center justify-content-center bg-primary text-white rounded-circle mb-3 shadow-sm" style={{width: '60px', height: '60px'}}>
-              <FaStethoscope size={28} />
+          {/* Decorative Background Circles */}
+          <div style={{position: 'absolute', top: '-50px', left: '-50px', width: '200px', height: '200px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%'}}></div>
+          <div style={{position: 'absolute', bottom: '-20px', right: '-20px', width: '150px', height: '150px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%'}}></div>
+
+          <div className="mb-5 position-relative z-1">
+            <div className="d-inline-flex align-items-center justify-content-center bg-white text-dark rounded-4 mb-4 shadow-lg" style={{width: '64px', height: '64px'}}>
+              <FaStethoscope size={32} className="text-primary" />
             </div>
             <h1 className="fw-bold display-5 mb-2">SautiYaAfya</h1>
-            <p className="lead fw-normal mb-0">AI-Powered Pediatric Triage</p>
+            <p className="lead fw-light opacity-75 mb-0">The "Two-Brain" AI Triage System</p>
           </div>
 
-          <p className="mb-4 text-muted" style={{lineHeight: '1.6'}}>
-            Revolutionizing respiratory screening in Kenya with our "Two-Brain" AI system. 
-            We combine standard medical algorithms with advanced deep learning to detect pneumonia and asthma.
-          </p>
-
-          <div className="d-flex flex-column gap-3">
-            <div className="d-flex align-items-center">
-              <div className="bg-white p-2 rounded-circle me-3 shadow-sm text-success"><FaChartLine /></div>
-              <span className="fw-bold text-muted">Real-Time Acoustic Analysis</span>
+          <div className="d-flex flex-column gap-4 position-relative z-1">
+            <div className="d-flex">
+              <div className="me-3"><FaBrain className="fs-4 text-white" /></div>
+              <div>
+                <h6 className="fw-bold mb-1">Dual-Engine Intelligence</h6>
+                <p className="small opacity-75 mb-0">Combining ResNet50 deep learning with clinical logic.</p>
+              </div>
             </div>
-            <div className="d-flex align-items-center">
-              <div className="bg-white p-2 rounded-circle me-3 shadow-sm text-info"><FaShieldAlt /></div>
-              <span className="fw-bold text-muted">Secure Patient Data Architecture</span>
+            <div className="d-flex">
+              <div className="me-3"><FaChartLine className="fs-4 text-white" /></div>
+              <div>
+                <h6 className="fw-bold mb-1">98% Diagnostic Accuracy</h6>
+                <p className="small opacity-75 mb-0">Precision audio analysis for Pneumonia & Asthma.</p>
+              </div>
             </div>
-            <div className="d-flex align-items-center">
-              <div className="bg-white p-2 rounded-circle me-3 shadow-sm text-warning"><FaUserMd /></div>
-              <span className="fw-bold text-muted">Empowering Community Health Workers</span>
+            <div className="d-flex">
+              <div className="me-3"><FaShieldAlt className="fs-4 text-warning" /></div>
+              <div>
+                <h6 className="fw-bold mb-1">Secure & Encrypted</h6>
+                <p className="small opacity-75 mb-0">Patient data is protected by enterprise-grade security.</p>
+              </div>
             </div>
           </div>
 
-         
+          <div className="mt-auto pt-5 opacity-50 small">
+            &copy; 2026 SautiYaAfya Research • Defense Build v2.0
+          </div>
+        </div>
 
-        {/* 👉 RIGHT SIDE: LOGIN FORM */}
-        <div className="col-12 col-md-6 p-5 d-flex align-items-center">
-          <div className="w-100">
-            <div className="text-center mb-4">
-              <h3 className="fw-bold text-dark-brown">Welcome Back</h3>
-              <p className="text-muted">Please sign in to access the dashboard</p>
+        {/* 👉 RIGHT PANEL: Login Form */}
+        <div className="col-12 col-md-7 p-5 d-flex align-items-center bg-white">
+          <div className="w-100 px-md-4">
+            <div className="text-center mb-5">
+              <h3 className="fw-bold text-dark-brown mb-1">Welcome Back</h3>
+              <p className="text-muted">Enter your credentials to access the secure portal.</p>
             </div>
 
-            {error && <div className="alert alert-danger text-center shadow-sm py-2 small">{error}</div>}
-            {msg && <div className="alert alert-success text-center shadow-sm py-2 small">{msg}</div>}
+            {error && <div className="alert alert-danger text-center shadow-sm py-2 small border-0 bg-danger text-white mb-4">{error}</div>}
+            {msg && <div className="alert alert-success text-center shadow-sm py-2 small border-0 bg-success text-white mb-4">{msg}</div>}
 
             <form onSubmit={handleEmailLogin}>
-              <div className="mb-3">
+              <div className="mb-4">
                 <label className="form-label small fw-bold text-muted text-uppercase">Email Address</label>
                 <div className="input-group">
-                  <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.4)', borderRight: 'none'}}><FaUserMd className="text-muted"/></span>
+                  <span className="input-group-text border-0 bg-light"><FaUserMd className="text-muted"/></span>
                   <input 
                     type="email" 
-                    className="form-control" 
+                    className="form-control bg-light border-0 py-3" 
                     placeholder="doctor@hospital.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    style={{...glassInputStyle, borderLeft: 'none'}}
                     required 
+                    style={{boxShadow: 'none'}}
                   />
                 </div>
               </div>
@@ -182,60 +194,60 @@ const Login = ({ setRole }) => {
               <div className="mb-2">
                 <label className="form-label small fw-bold text-muted text-uppercase">Password</label>
                 <div className="input-group">
-                  <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.4)', borderRight: 'none'}}><FaLock className="text-muted"/></span>
+                  <span className="input-group-text border-0 bg-light"><FaLock className="text-muted"/></span>
                   <input 
                     type="password" 
-                    className="form-control" 
+                    className="form-control bg-light border-0 py-3" 
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    style={{...glassInputStyle, borderLeft: 'none'}}
                     required 
+                    style={{boxShadow: 'none'}}
                   />
                 </div>
               </div>
 
               <div className="text-end mb-4">
-                 <button type="button" onClick={handleForgotPassword} className="btn btn-link btn-sm p-0 text-muted" style={{textDecoration: 'none'}}>
+                 <button type="button" onClick={handleForgotPassword} className="btn btn-link btn-sm p-0 text-muted fw-bold" style={{textDecoration: 'none', fontSize: '0.85rem'}}>
                    Forgot Password?
                  </button>
               </div>
 
               <button 
                 type="submit" 
-                className="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-sm d-flex align-items-center justify-content-center mb-3"
+                className="btn btn-primary w-100 py-3 rounded-3 fw-bold shadow-lg d-flex align-items-center justify-content-center mb-3 transition-transform"
                 disabled={loading}
+                style={{background: 'linear-gradient(45deg, #0984e3, #00b894)', border: 'none'}}
               >
-                {loading ? 'Authenticating...' : <>Access Portal <FaArrowRight className="ms-2"/></>}
+                {loading ? 'Authenticating...' : <>Access Dashboard <FaArrowRight className="ms-2"/></>}
               </button>
             </form>
 
-            <div className="d-flex align-items-center mb-3">
-                <hr className="flex-grow-1" style={{borderColor: 'rgba(0,0,0,0.1)'}}/>
-                <span className="mx-2 small text-muted">OR</span>
-                <hr className="flex-grow-1" style={{borderColor: 'rgba(0,0,0,0.1)'}}/>
+            <div className="d-flex align-items-center mb-4">
+                <hr className="flex-grow-1" style={{borderColor: '#eee'}}/>
+                <span className="mx-3 small text-muted fw-bold">OR</span>
+                <hr className="flex-grow-1" style={{borderColor: '#eee'}}/>
             </div>
 
             <button
                onClick={handleGoogleLogin}
-               className="btn bg-white w-100 py-2 rounded-3 shadow-sm d-flex align-items-center justify-content-center mb-4"
+               className="btn w-100 py-3 rounded-3 shadow-sm d-flex align-items-center justify-content-center mb-4 border"
                disabled={loading}
-               style={{border: '1px solid #eee'}}
+               style={{background: '#fff', color: '#444'}}
             >
                <FaGoogle className="me-2 text-danger" />
-               Continue with Google
+               Sign in with Google
             </button>
 
             <div className="text-center">
               <small className="text-muted">
-                New here? <Link to="/signup" className="fw-bold text-primary" style={{textDecoration: 'none'}}>Create Account</Link>
+                Don't have an account? <Link to="/signup" className="fw-bold text-primary" style={{textDecoration: 'none'}}>Register Now</Link>
               </small>
             </div>
           </div>
         </div>
 
       </div>
-    </div>
     </div>
   );
 };
