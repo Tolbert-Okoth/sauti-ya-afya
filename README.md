@@ -135,7 +135,7 @@ A running backend server (Flask/Django/Node/FastAPI) serving the API
 
 Installation
 # Clone the repository
-git clone https://github.com/your-username/sauti-ya-afya.git
+
 cd sauti-ya-afya/client
 
 # Install dependencies
@@ -147,9 +147,6 @@ Create a .env or config.js to set your API URL (default is localhost:5000)
 
 Run the Application
 npm start
-
-
-The app will launch at http://localhost:3000
 
 📖 User Guide
 1. System Administration (Admin)
