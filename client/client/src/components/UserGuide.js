@@ -47,7 +47,7 @@ const UserGuide = () => {
             <div style={sectionStyle} className="shadow-sm">
                 <h5 style={titleStyle}><FaMicrophone className="me-2 text-danger"/> 1. Recording Best Practices</h5>
                 <p className="text-dark small" style={{lineHeight: '1.6'}}>
-                    To ensure the AI gives an accurate diagnosis (98% accuracy), follow these strict rules during screening:
+                    To ensure the AI gives an accurate diagnosis, follow these strict rules during screening:
                 </p>
                 <ul className="small text-muted ps-3 mb-0">
                     <li className="mb-2"><strong>Silence is Key:</strong> Ensure the room is completely quiet. Background talking will confuse the AI.</li>
