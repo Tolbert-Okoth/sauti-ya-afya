@@ -131,7 +131,7 @@ const Login = ({ setRole }) => {
 
           <p className="mb-4 text-muted" style={{lineHeight: '1.6'}}>
             Revolutionizing respiratory screening in Kenya with our "Two-Brain" AI system. 
-            We combine standard medical algorithms with advanced deep learning to detect pneumonia and asthma in seconds.
+            We combine standard medical algorithms with advanced deep learning to detect pneumonia and asthma.
           </p>
 
           <div className="d-flex flex-column gap-3">
@@ -149,10 +149,7 @@ const Login = ({ setRole }) => {
             </div>
           </div>
 
-          <div className="mt-auto pt-5">
-            <small className="text-muted">v2.0.4 • Defense Ready Build</small>
-          </div>
-        </div>
+         
 
         {/* 👉 RIGHT SIDE: LOGIN FORM */}
         <div className="col-12 col-md-6 p-5 d-flex align-items-center">
@@ -238,6 +235,7 @@ const Login = ({ setRole }) => {
         </div>
 
       </div>
+    </div>
     </div>
   );
 };
