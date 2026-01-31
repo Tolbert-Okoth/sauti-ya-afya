@@ -4,6 +4,7 @@ import axios from 'axios';
 import { auth } from '../firebase';
 import { useNavigate } from 'react-router-dom';
 import { FaUserShield, FaTrash, FaUserPlus, FaIdBadge } from 'react-icons/fa';
+import config from '../config'; // 🟢 IMPORT CONFIG FOR LIVE URL
 
 const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
@@ -16,7 +17,8 @@ const AdminDashboard = () => {
   const fetchUsers = async () => {
     try {
       const token = await auth.currentUser.getIdToken();
-      const res = await axios.get('http://localhost:5000/api/users', {
+      // 🟢 FIX: Use config.API_BASE_URL instead of localhost
+      const res = await axios.get(`${config.API_BASE_URL}/users`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUsers(res.data);
@@ -29,7 +31,8 @@ const AdminDashboard = () => {
     if(!window.confirm("Are you sure? This removes their access immediately.")) return;
     try {
       const token = await auth.currentUser.getIdToken();
-      await axios.delete(`http://localhost:5000/api/users/${id}`, {
+      // 🟢 FIX: Use config.API_BASE_URL
+      await axios.delete(`${config.API_BASE_URL}/users/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       fetchUsers(); 
