@@ -5,14 +5,13 @@
   --glass-card-bg: rgba(255, 255, 255, 0.5);
   --glass-border: 1px solid rgba(255, 255, 255, 0.8);
   --glass-shadow: 0 8px 32px rgba(14, 33, 62, 0.15);
-
   --accent-green: #00b894;
   --accent-blue: #0984e3;
   --text-main: #2d3436;
   --text-medical: #2c3e50;
 }
 
-/* 🟢 FIX: Balanced Background Image (0.6 Opacity) */
+/* 1. Base Setup */
 html, body {
   margin: 0;
   padding: 0;
@@ -21,27 +20,25 @@ html, body {
   min-height: 100vh;
   overflow-x: hidden;
   color: var(--text-main);
-  
-  /* Adjusted to 0.6 opacity.
-     This allows more light than 0.7, but keeps enough contrast for the UI.
-  */
-  background: 
-    linear-gradient(rgba(10, 25, 45, 0.6), rgba(10, 25, 45, 0.6)),
-    url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
+  background: url('https://images.unsplash.com/photo-1584982751601-97dcc096659c?q=80&w=2574&auto=format&fit=crop')
     no-repeat center center fixed;
-    
   background-size: cover;
 }
 
-/* 🗑️ REMOVE: Old overlay is no longer needed */
 body::before {
-  display: none;
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 61, 98, 0.25);
+  z-index: -1;
+  min-height: 100vh;
 }
 
-/* Responsive Glass Window */
+/* 🟢 FIX 1: Make the Outer Window CLEAR (Ghost Frame) */
 .glass-window {
+  /* Reduced from 0.35 to 0.15 to stop the "Milky" effect */
   background: rgba(255, 255, 255, 0.15); 
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px); /* Increased blur for better readability */
   -webkit-backdrop-filter: blur(20px);
   border-radius: 24px;
   min-height: 90vh; 
@@ -49,7 +46,7 @@ body::before {
   margin: 5vh auto;
   display: flex;
   overflow: hidden; 
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); /* Stronger shadow for depth */
+  box-shadow: 0 8px 32px rgba(14, 33, 62, 0.25); /* Stronger shadow for contrast */
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
@@ -61,15 +58,15 @@ body::before {
     border-radius: 0;
     border: none;
     flex-direction: column;
-    /* Make mobile background readable */
-    background: rgba(255, 255, 255, 0.9); 
+    background: rgba(255, 255, 255, 0.85); /* Mobile needs to be readable */
   }
 }
 
-/* Global Card Transparency */
+/* 🟢 FIX 2: Global Card Transparency (The Real Ghost Mode) */
+/* This forces all cards inside the window to be subtle */
 .glass-card {
-  background: rgba(255, 255, 255, 0.1) !important;
-  backdrop-filter: none !important;
+  background: rgba(255, 255, 255, 0.1) !important; /* Force 10% opacity */
+  backdrop-filter: none !important; /* Let parent blur handle it */
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 16px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
