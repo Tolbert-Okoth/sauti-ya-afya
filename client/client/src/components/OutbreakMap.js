@@ -96,12 +96,12 @@ const OutbreakMap = ({ patients = [] }) => {
 
   return (
     <div className="glass-card p-0 overflow-hidden shadow-sm h-100">
-      <div className="p-3 border-bottom border-light d-flex justify-content-between align-items-center bg-white bg-opacity-10">
+      <div className="p-3 border-bottom border-secondary d-flex justify-content-between align-items-center">
         <div className="d-flex align-items-center">
-            <FaMapMarkedAlt className="text-accent me-2" />
-            <span className="fw-bold text-dark-brown">Live Surveillance</span>
+            <FaMapMarkedAlt className="text-info me-2" />
+            <span className="fw-bold text-white">Live Surveillance</span>
         </div>
-        <div className="d-flex align-items-center small">
+        <div className="d-flex align-items-center small text-white-50">
             <span className="me-3 d-flex align-items-center"><FaCircle size={8} className="text-danger me-1"/> Critical</span>
             <span className="d-flex align-items-center"><FaCircle size={8} className="text-warning me-1"/> Warning</span>
         </div>
@@ -118,7 +118,7 @@ const OutbreakMap = ({ patients = [] }) => {
           <TileLayer
             attribution='&copy; OpenStreetMap contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            opacity={0.8} // Slightly transparent map tiles to blend with glass
+            opacity={0.7} // Darker map tiles
           />
           
           {clusters.map((cluster, index) => (
@@ -136,8 +136,8 @@ const OutbreakMap = ({ patients = [] }) => {
             >
               <Popup className="glass-popup">
                 <div className="text-center">
-                    <strong className="text-dark-brown">{cluster.name}</strong> <br/>
-                    <span className="badge bg-light text-dark border my-1">{cluster.count} Cases</span>
+                    <strong className="text-dark">{cluster.name}</strong> <br/>
+                    <span className="badge bg-secondary text-light border border-dark my-1">{cluster.count} Cases</span>
                     {cluster.highRiskCount > 0 && <span className="badge bg-danger ms-1">{cluster.highRiskCount} Critical</span>}
                     <hr style={{margin: "5px 0", borderColor: 'rgba(0,0,0,0.1)'}}/>
                     <small className="text-muted d-block">Recent: {cluster.patientNames.slice(0, 3).join(", ")}...</small>
@@ -147,9 +147,9 @@ const OutbreakMap = ({ patients = [] }) => {
           ))}
         </MapContainer>
         
-        {/* Overlay Gradient at bottom for smooth fade */}
-        <div className="position-absolute bottom-0 start-0 end-0 p-2 text-center small text-muted bg-white bg-opacity-75" style={{zIndex: 1000}}>
-             Real-time data synced from CHW devices.
+        {/* Dark Gradient Overlay */}
+        <div className="position-absolute bottom-0 start-0 end-0 p-2 text-center small text-white-50 bg-dark bg-opacity-75" style={{zIndex: 1000}}>
+              Real-time data synced from CHW devices.
         </div>
       </div>
     </div>

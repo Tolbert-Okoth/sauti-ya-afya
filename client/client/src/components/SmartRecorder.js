@@ -40,11 +40,11 @@ const SmartRecorder = ({ onLogout }) => {
   const audioChunksRef = useRef([]);
   const animationRef = useRef(null);
 
-  // 🔹 INPUT STYLE: Matching Login Transparency
+  // 🔹 NEW DARK GLASS INPUT STYLE
   const glassInputStyle = {
-      background: 'rgba(255, 255, 255, 0.45)', 
-      border: '1px solid rgba(255, 255, 255, 0.6)',
-      color: '#2d3436',
+      background: 'rgba(0, 0, 0, 0.2)', 
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      color: '#fff',
       borderRadius: '12px',
       padding: '11px',
       backdropFilter: 'blur(6px)'
@@ -271,12 +271,7 @@ const SmartRecorder = ({ onLogout }) => {
   return (
     <div className="container-fluid p-0 d-flex justify-content-center">
       
-      {/* 🟢 FINAL FIX: "GHOST MODE"
-          - No Red Border
-          - 5% White Opacity (0.05) - Adds just a hint of "card" shape
-          - No Blur (Relies on background blur)
-          - Keeps 'glass-card' class for shape/shadow, but overrides background
-      */}
+      {/* 🟢 DARK MODE GHOST CARD */}
       <div 
         className="glass-card w-100 shadow-lg" 
         style={{ 
@@ -284,7 +279,7 @@ const SmartRecorder = ({ onLogout }) => {
             minHeight: '85vh', 
             backdropFilter: 'none', 
             background: 'rgba(255, 255, 255, 0.05)', 
-            border: '1px solid rgba(255, 255, 255, 0.2)'
+            border: '1px solid rgba(255, 255, 255, 0.1)'
         }}
       >
         <div className="p-3 p-md-5">
@@ -292,11 +287,11 @@ const SmartRecorder = ({ onLogout }) => {
           {/* Header */}
           <div className="d-flex align-items-center justify-content-between mb-5">
               <div className="d-flex align-items-center">
-                  <div className="bg-white rounded-circle p-3 text-accent me-3 shadow-sm">
+                  <div className="bg-primary rounded-circle p-3 text-white me-3 shadow-sm">
                       <FaNotesMedical size={24} />
                   </div>
                   <div>
-                      <h4 className="fw-bold text-dark-brown mb-0">New Screening</h4>
+                      <h4 className="fw-bold text-white mb-0">New Screening</h4>
                       <div className="d-flex align-items-center mt-1">
                         <small className="text-muted me-2">AI Engine Status:</small>
                         {serverStatus === 'waking' && (
@@ -318,7 +313,7 @@ const SmartRecorder = ({ onLogout }) => {
                   </div>
               </div>
               {onLogout && (
-                <button onClick={onLogout} className="btn btn-outline-danger d-flex align-items-center rounded-pill px-4 shadow-sm">
+                <button onClick={onLogout} className="btn btn-outline-danger d-flex align-items-center rounded-pill px-4 shadow-sm text-white border-light">
                   <FaSignOutAlt className="me-2"/> Logout
                 </button>
               )}
@@ -350,8 +345,8 @@ const SmartRecorder = ({ onLogout }) => {
               <div className="col-12 col-md-6">
                   <label className="form-label small fw-bold text-muted text-uppercase">Location</label>
                   <select name="location" className={`form-select ${errors.location ? 'is-invalid' : ''}`} style={glassInputStyle} onChange={handleInputChange} value={patientData.location}>
-                      <option value="" style={{color: 'black'}}>-- Select County --</option>
-                      {counties.map((c) => (<option key={c.id} value={c.name} style={{color: 'black'}}>{(c.code || '000').toString().padStart(3,'0')} - {c.name}</option>))}
+                      <option value="" style={{color: '#333'}}>-- Select County --</option>
+                      {counties.map((c) => (<option key={c.id} value={c.name} style={{color: '#333'}}>{(c.code || '000').toString().padStart(3,'0')} - {c.name}</option>))}
                   </select>
                   {errors.location && <div className="invalid-feedback">{errors.location}</div>}
               </div>
@@ -361,18 +356,18 @@ const SmartRecorder = ({ onLogout }) => {
               </div>
           </div>
           
-          <hr className="my-5" style={{borderColor: 'rgba(255,255,255,0.3)'}} />
+          <hr className="my-5" style={{borderColor: 'rgba(255,255,255,0.1)'}} />
 
           {/* Recorder UI */}
           <div className="text-center">
-              <h5 className="fw-bold mb-4 text-dark-brown">Lung Sound Capture</h5>
-              <div className="glass-card d-inline-block p-5 mb-4 shadow-sm" style={{background: 'rgba(255,255,255,0.4)'}}>
+              <h5 className="fw-bold mb-4 text-white">Lung Sound Capture</h5>
+              <div className="glass-card d-inline-block p-5 mb-4 shadow-sm" style={{background: 'rgba(255,255,255,0.05)'}}>
                   <LungAnimation isRecording={isRecording} volume={volume} />
               </div>
               <div className="d-grid gap-2 col-12 col-md-6 mx-auto">
               {!isRecording ? (
                   <button 
-                    className="btn btn-outline-danger btn-lg rounded-pill shadow-sm py-3" 
+                    className="btn btn-outline-danger btn-lg rounded-pill shadow-sm py-3 text-white border-danger" 
                     style={{borderWidth: '2px'}} 
                     onClick={startRecording}
                     disabled={serverStatus !== 'ready'} 
@@ -388,52 +383,52 @@ const SmartRecorder = ({ onLogout }) => {
           </div>
 
           {/* RESULTS AREA */}
-          {loading && <div className="mt-5 text-center text-dark-brown animate-pulse">🧠 Running Async Analysis (Please Wait)...</div>}
+          {loading && <div className="mt-5 text-center text-white animate-pulse">🧠 Running Async Analysis (Please Wait)...</div>}
           
           {analysis && (
             <div className={`glass-card mt-5 text-start border-start border-5 animate-slide-in shadow-lg ${analysis.risk_level_output === 'High' ? 'border-danger' : analysis.risk_level_output === 'Medium' ? 'border-warning' : 'border-success'}`}>
               
-              <div className="d-flex justify-content-between align-items-center mb-4 p-4 border-bottom">
-                  <h4 className="mb-0 fw-bold text-dark-brown"><FaStethoscope className="me-2"/>Diagnostic Result</h4>
+              <div className="d-flex justify-content-between align-items-center mb-4 p-4 border-bottom" style={{borderColor: 'rgba(255,255,255,0.1)'}}>
+                  <h4 className="mb-0 fw-bold text-white"><FaStethoscope className="me-2"/>Diagnostic Result</h4>
                   {saveStatus === 'saved' && <span className="badge bg-success shadow-sm p-2"><FaCheckCircle className="me-1"/> Saved to Database</span>}
               </div>
               
               <div className="row g-5 p-4 pt-0">
-                  <div className="col-12 col-lg-6 border-end-lg">
+                  <div className="col-12 col-lg-6 border-end-lg" style={{borderColor: 'rgba(255,255,255,0.1)'}}>
                       <h1 className={`mb-2 fw-bold display-6 ${getRiskColor(analysis.risk_level_output)}`}>
                           {analysis.preliminary_assessment}
                       </h1>
                       <p className="text-muted mb-4 fs-5">Risk Level: <strong>{analysis.risk_level_output.toUpperCase()}</strong></p>
 
-                      <div className="p-4 rounded-3 shadow-sm mb-3" style={{background: 'rgba(255,255,255,0.7)'}}>
+                      <div className="p-4 rounded-3 shadow-sm mb-3" style={{background: 'rgba(0,0,0,0.2)'}}>
                           <label className="small fw-bold text-muted text-uppercase mb-3 d-block"><FaChartBar className="me-2"/>AI Confidence Scores</label>
                           
                           <div className="mb-3">
-                              <div className="d-flex justify-content-between mb-1">
+                              <div className="d-flex justify-content-between mb-1 text-white">
                                   <span>Pneumonia</span>
                                   <span className="fw-bold">{((analysis.biomarkers?.prob_pneumonia || 0) * 100).toFixed(1)}%</span>
                               </div>
-                              <div className="progress" style={{height: '10px'}}>
+                              <div className="progress" style={{height: '10px', background: 'rgba(255,255,255,0.1)'}}>
                                   <div className="progress-bar bg-danger" style={{width: `${(analysis.biomarkers?.prob_pneumonia || 0) * 100}%`}}></div>
                               </div>
                           </div>
                           
                           <div className="mb-3">
-                              <div className="d-flex justify-content-between mb-1">
+                              <div className="d-flex justify-content-between mb-1 text-white">
                                   <span>Asthma</span>
                                   <span className="fw-bold">{((analysis.biomarkers?.prob_asthma || 0) * 100).toFixed(1)}%</span>
                               </div>
-                              <div className="progress" style={{height: '10px'}}>
+                              <div className="progress" style={{height: '10px', background: 'rgba(255,255,255,0.1)'}}>
                                   <div className="progress-bar bg-warning" style={{width: `${(analysis.biomarkers?.prob_asthma || 0) * 100}%`}}></div>
                               </div>
                           </div>
 
                           <div className="mb-1">
-                              <div className="d-flex justify-content-between mb-1">
+                              <div className="d-flex justify-content-between mb-1 text-white">
                                   <span>Normal / Healthy</span>
                                   <span className="fw-bold">{((analysis.biomarkers?.prob_normal || 0) * 100).toFixed(1)}%</span>
                               </div>
-                              <div className="progress" style={{height: '10px'}}>
+                              <div className="progress" style={{height: '10px', background: 'rgba(255,255,255,0.1)'}}>
                                   <div className="progress-bar bg-success" style={{width: `${(analysis.biomarkers?.prob_normal || 0) * 100}%`}}></div>
                               </div>
                           </div>
@@ -444,9 +439,10 @@ const SmartRecorder = ({ onLogout }) => {
                       <div className="h-100 d-flex flex-column">
                           <label className="small fw-bold text-muted text-uppercase mb-3"><FaInfoCircle className="me-2"/>Clinical Interpretation</label>
                           
-                          <div className="flex-grow-1 rounded-3 p-4 border border-info shadow-sm" style={{backgroundColor: '#e3f2fd'}}>
-                              <h5 className="fw-bold text-dark-brown mb-3">Analysis Summary</h5>
-                              <p className="text-dark mb-0" style={{lineHeight: '1.6'}}>
+                          {/* 🟢 Dark Blue Glass Clinical Box */}
+                          <div className="flex-grow-1 rounded-3 p-4 border border-info shadow-sm" style={{backgroundColor: 'rgba(9, 132, 227, 0.15)'}}>
+                              <h5 className="fw-bold text-white mb-3">Analysis Summary</h5>
+                              <p className="text-white mb-0" style={{lineHeight: '1.6', opacity: 0.9}}>
                                   {getClinicalExplanation(analysis)}
                               </p>
                           </div>

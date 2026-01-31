@@ -6,7 +6,7 @@ import config from '../config';
 import OutbreakMap from './OutbreakMap';
 import AudioVisualizer from './AudioVisualizer'; 
 import { 
-  FaWhatsapp, FaCheck, FaSync, FaUserMd, FaCircle, 
+  FaWhatsapp, FaCheck, FaSync, FaCircle, 
   FaSpinner, FaExclamationTriangle, FaNotesMedical, FaChartBar, FaInfoCircle
 } from 'react-icons/fa';
 
@@ -64,19 +64,19 @@ const DoctorDashboard = () => {
     }
   };
 
-  if (loading) return <div className="text-center mt-5 text-dark-brown animate-pulse">Loading Triage Data...</div>;
+  if (loading) return <div className="text-center mt-5 text-white animate-pulse">Loading Triage Data...</div>;
 
   return (
     <div className="container-fluid p-0">
         {/* Header */}
         <header className="d-flex justify-content-between align-items-center mb-4">
           <div>
-            <h4 className="fw-bold text-dark-brown mb-0">Epidemiology Surveillance</h4>
-            <p className="text-dark-brown opacity-75 small">Live data from 47 Counties</p>
+            <h4 className="fw-bold text-white mb-0">Epidemiology Surveillance</h4>
+            <p className="text-white-50 opacity-75 small">Live data from 47 Counties</p>
           </div>
           
           <div className="glass-card px-4 py-2 d-flex align-items-center transition-all">
-             <div className={`d-flex align-items-center fw-bold small ${isUpdating ? 'text-accent' : 'text-success'}`}>
+             <div className={`d-flex align-items-center fw-bold small ${isUpdating ? 'text-info' : 'text-success'}`}>
                 {isUpdating ? (
                     <><FaSync size={12} className="me-2 fa-spin" /> Syncing...</>
                 ) : (
@@ -97,19 +97,19 @@ const DoctorDashboard = () => {
                     <div className="col-4">
                         <div className="glass-card text-center py-3">
                             <h2 className="fw-bold text-danger mb-0">{patients.filter(p => p.risk_level === 'High').length}</h2>
-                            <small className="text-dark-brown opacity-75">Critical</small>
+                            <small className="text-white opacity-75">Critical</small>
                         </div>
                     </div>
                     <div className="col-4">
                         <div className="glass-card text-center py-3">
                             <h2 className="fw-bold text-warning mb-0">{patients.filter(p => p.risk_level === 'Medium').length}</h2>
-                            <small className="text-dark-brown opacity-75">Monitor</small>
+                            <small className="text-white opacity-75">Monitor</small>
                         </div>
                     </div>
                     <div className="col-4">
                         <div className="glass-card text-center py-3">
-                            <h2 className="fw-bold text-accent mb-0">{patients.filter(p => p.risk_level === 'Low').length}</h2>
-                            <small className="text-dark-brown opacity-75">Stable</small>
+                            <h2 className="fw-bold text-success mb-0">{patients.filter(p => p.risk_level === 'Low').length}</h2>
+                            <small className="text-white opacity-75">Stable</small>
                         </div>
                     </div>
                 </div>
@@ -118,8 +118,8 @@ const DoctorDashboard = () => {
             {/* RIGHT COLUMN: Patient Queue */}
             <div className="col-lg-5 order-lg-1">
                 <div className="d-flex justify-content-between align-items-center mb-3">
-                    <h5 className="fw-bold text-dark-brown mb-0">Triage Queue</h5>
-                    <span className="badge bg-white text-dark shadow-sm">{patients.length} Pending</span>
+                    <h5 className="fw-bold text-white mb-0">Triage Queue</h5>
+                    <span className="badge bg-primary text-white shadow-sm">{patients.length} Pending</span>
                 </div>
 
                 <div className="overflow-auto pe-2" style={{maxHeight: '600px'}}>
@@ -135,14 +135,14 @@ const DoctorDashboard = () => {
                             <div className="rounded-circle d-flex align-items-center justify-content-center me-3" 
                                  style={{
                                     width:'45px', height:'45px', 
-                                    background: 'rgba(255,255,255,0.4)',
-                                    color: p.risk_level === 'High' ? '#dc3545' : '#2d3436'
+                                    background: 'rgba(255,255,255,0.1)',
+                                    color: p.risk_level === 'High' ? '#dc3545' : '#fff'
                                 }}>
-                                <FaUserMd size={20} />
+                                {p.risk_level === 'High' ? <FaExclamationTriangle size={20}/> : <FaNotesMedical size={20} />}
                             </div>
                             <div className="flex-grow-1">
-                                <h6 className="mb-0 fw-bold text-dark-brown">{p.name} <span className="small fw-normal text-muted">({p.age})</span></h6>
-                                <div className="small text-dark-brown opacity-75">
+                                <h6 className="mb-0 fw-bold text-white">{p.name} <span className="small fw-normal text-white-50">({p.age})</span></h6>
+                                <div className="small text-white-50 opacity-75">
                                     {p.location} • {new Date(p.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
                                 </div>
                             </div>
@@ -170,7 +170,7 @@ const DoctorDashboard = () => {
   );
 };
 
-// --- SUB-COMPONENT: CaseReviewModal ---
+// --- SUB-COMPONENT: CaseReviewModal (Dark Mode) ---
 const CaseReviewModal = ({ patient, onClose, onResolve }) => {
     const [audioBlobUrl, setAudioBlobUrl] = useState(null);
     const [audioLoading, setAudioLoading] = useState(false);
@@ -225,68 +225,69 @@ const CaseReviewModal = ({ patient, onClose, onResolve }) => {
     };
 
     return (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)' }}>
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }}>
             <div className="modal-dialog modal-xl modal-dialog-centered">
-                <div className="modal-content glass-card border-0 overflow-hidden" style={{background: 'rgba(255,255,255,0.95)'}}>
-                    <div className="modal-header border-bottom border-light">
-                        <h5 className="modal-title fw-bold text-dark-brown"><FaNotesMedical className="me-2"/>Clinical Case Review</h5>
-                        <button type="button" className="btn-close" onClick={onClose}></button>
+                {/* 🟢 Dark Modal Content */}
+                <div className="modal-content glass-card border-secondary overflow-hidden" style={{background: '#1e272e'}}>
+                    <div className="modal-header border-bottom border-secondary">
+                        <h5 className="modal-title fw-bold text-white"><FaNotesMedical className="me-2"/>Clinical Case Review</h5>
+                        <button type="button" className="btn-close btn-close-white" onClick={onClose}></button>
                     </div>
                     <div className="modal-body p-4">
                         <div className="row">
                             {/* LEFT SIDE: Patient Data & Explanation */}
-                            <div className="col-md-5 border-end border-light">
-                                <h4 className="fw-bold text-dark-brown">{patient.name}</h4>
-                                <p className="text-muted mb-4">{patient.age} • {patient.location}</p>
+                            <div className="col-md-5 border-end border-secondary">
+                                <h4 className="fw-bold text-white">{patient.name}</h4>
+                                <p className="text-white-50 mb-4">{patient.age} • {patient.location}</p>
                                 
                                 <div className="mb-4">
-                                   <label className="small fw-bold text-muted text-uppercase mb-2"><FaChartBar className="me-1"/> AI Confidence</label>
-                                   <div className="bg-light p-3 rounded">
+                                   <label className="small fw-bold text-white-50 text-uppercase mb-2"><FaChartBar className="me-1"/> AI Confidence</label>
+                                   <div className="p-3 rounded" style={{background: 'rgba(0,0,0,0.2)'}}>
                                        {/* Pneumonia */}
-                                       <div className="d-flex justify-content-between small mb-1">
-                                           <span>Pneumonia</span>
-                                           <span className="fw-bold">{((patient.biomarkers?.prob_pneumonia || 0) * 100).toFixed(1)}%</span>
+                                       <div className="d-flex justify-content-between small mb-1 text-white">
+                                            <span>Pneumonia</span>
+                                            <span className="fw-bold">{((patient.biomarkers?.prob_pneumonia || 0) * 100).toFixed(1)}%</span>
                                        </div>
-                                       <div className="progress mb-2" style={{height: '6px'}}>
-                                           <div className="progress-bar bg-danger" style={{width: `${(patient.biomarkers?.prob_pneumonia || 0) * 100}%`}}></div>
+                                       <div className="progress mb-2" style={{height: '6px', background: 'rgba(255,255,255,0.1)'}}>
+                                            <div className="progress-bar bg-danger" style={{width: `${(patient.biomarkers?.prob_pneumonia || 0) * 100}%`}}></div>
                                        </div>
 
                                        {/* Asthma */}
-                                       <div className="d-flex justify-content-between small mb-1">
-                                           <span>Asthma</span>
-                                           <span className="fw-bold">{((patient.biomarkers?.prob_asthma || 0) * 100).toFixed(1)}%</span>
+                                       <div className="d-flex justify-content-between small mb-1 text-white">
+                                            <span>Asthma</span>
+                                            <span className="fw-bold">{((patient.biomarkers?.prob_asthma || 0) * 100).toFixed(1)}%</span>
                                        </div>
-                                       <div className="progress mb-2" style={{height: '6px'}}>
-                                           <div className="progress-bar bg-warning" style={{width: `${(patient.biomarkers?.prob_asthma || 0) * 100}%`}}></div>
+                                       <div className="progress mb-2" style={{height: '6px', background: 'rgba(255,255,255,0.1)'}}>
+                                            <div className="progress-bar bg-warning" style={{width: `${(patient.biomarkers?.prob_asthma || 0) * 100}%`}}></div>
                                        </div>
 
-                                       {/* 🟢 Normal */}
-                                       <div className="d-flex justify-content-between small mb-1">
-                                           <span>Normal</span>
-                                           <span className="fw-bold">{((patient.biomarkers?.prob_normal || 0) * 100).toFixed(1)}%</span>
+                                       {/* Normal */}
+                                       <div className="d-flex justify-content-between small mb-1 text-white">
+                                            <span>Normal</span>
+                                            <span className="fw-bold">{((patient.biomarkers?.prob_normal || 0) * 100).toFixed(1)}%</span>
                                        </div>
-                                       <div className="progress" style={{height: '6px'}}>
-                                           <div className="progress-bar bg-success" style={{width: `${(patient.biomarkers?.prob_normal || 0) * 100}%`}}></div>
+                                       <div className="progress" style={{height: '6px', background: 'rgba(255,255,255,0.1)'}}>
+                                            <div className="progress-bar bg-success" style={{width: `${(patient.biomarkers?.prob_normal || 0) * 100}%`}}></div>
                                        </div>
                                    </div>
                                 </div>
 
                                 <div className="mb-3">
-                                   <label className="small fw-bold text-muted text-uppercase mb-2"><FaInfoCircle className="me-1"/> Clinical Interpretation</label>
-                                   <div className="p-3 bg-alice-blue border border-info rounded text-dark small">
+                                   <label className="small fw-bold text-white-50 text-uppercase mb-2"><FaInfoCircle className="me-1"/> Clinical Interpretation</label>
+                                   <div className="p-3 border border-info rounded text-white small" style={{background: 'rgba(9, 132, 227, 0.15)'}}>
                                        {getClinicalExplanation()}
                                    </div>
                                 </div>
 
                                 <div className="mb-3">
-                                    <label className="small fw-bold text-muted text-uppercase">Symptoms</label>
-                                    <p className="bg-light p-2 rounded small text-dark fst-italic">"{patient.symptoms || "None"}"</p>
+                                    <label className="small fw-bold text-white-50 text-uppercase">Symptoms</label>
+                                    <p className="p-2 rounded small text-white-50 fst-italic" style={{background: 'rgba(0,0,0,0.2)'}}>"{patient.symptoms || "None"}"</p>
                                 </div>
                             </div>
 
                             {/* RIGHT SIDE: Visualizer & Audio */}
                             <div className="col-md-7">
-                                <div className="bg-dark rounded mb-3 overflow-hidden position-relative">
+                                <div className="bg-dark rounded mb-3 overflow-hidden position-relative" style={{border: '1px solid rgba(255,255,255,0.1)'}}>
                                     {/* Spectrogram Visualizer */}
                                     <div style={{height: '250px'}}>
                                         {patient.spectrogram ? (
@@ -306,8 +307,8 @@ const CaseReviewModal = ({ patient, onClose, onResolve }) => {
                                 {/* 🎵 REAL AUDIO PLAYER */}
                                 <div className="mb-3">
                                     {patient.recording_url ? (
-                                        <div className="text-center p-3 bg-light rounded">
-                                            {audioLoading && <div className="small text-primary fw-bold"><FaSpinner className="spin me-2"/> Loading Audio...</div>}
+                                        <div className="text-center p-3 rounded" style={{background: 'rgba(0,0,0,0.2)'}}>
+                                            {audioLoading && <div className="small text-info fw-bold"><FaSpinner className="spin me-2"/> Loading Audio...</div>}
                                             {audioError && <div className="small text-danger fw-bold"><FaExclamationTriangle/> {audioError}</div>}
                                             
                                             {audioBlobUrl && (

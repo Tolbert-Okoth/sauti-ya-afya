@@ -16,26 +16,34 @@ const SettingsHub = ({ role }) => {
     
     return (
       <div 
-        className="d-flex justify-content-between align-items-center p-3 border-bottom border-light transition-all cursor-pointer hover-glass"
+        className="d-flex justify-content-between align-items-center p-3 transition-all cursor-pointer hover-glass"
         onClick={() => navigate(path)}
-        style={{ cursor: 'pointer' }}
+        style={{ 
+            cursor: 'pointer',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)' // 🟢 Subtle Glass Border
+        }}
       >
         <div className="d-flex align-items-center">
           <div className={`me-3 text-${color || 'secondary'}`}>{icon}</div>
-          <span className="fw-bold text-dark-brown">{title}</span>
+          {/* 🟢 Text White for Dark Mode */}
+          <span className="fw-bold text-white">{title}</span>
         </div>
-        <FaChevronRight className="text-muted opacity-50" />
+        <FaChevronRight className="text-white opacity-25" />
       </div>
     );
   };
 
   return (
     <div className="container p-0" style={{ maxWidth: '600px' }}>
+      
+      {/* Header */}
       <div className="d-flex align-items-center mb-4">
-        <div className="bg-white rounded-circle p-2 text-dark me-3 shadow-sm">
+        {/* 🟢 Icon Container: Primary Blue instead of White */}
+        <div className="bg-primary rounded-circle p-2 text-white me-3 shadow-sm">
             <FaCog size={20} />
         </div>
-        <h3 className="fw-bold text-dark-brown mb-0">{t('settings_title')}</h3>
+        {/* 🟢 Title: White */}
+        <h3 className="fw-bold text-white mb-0">{t('settings_title')}</h3>
       </div>
       
       <div className="glass-card overflow-hidden p-0">
@@ -62,7 +70,7 @@ const SettingsHub = ({ role }) => {
         
       </div>
 
-      <div className="text-center mt-4 text-dark-brown opacity-50 small">
+      <div className="text-center mt-4 text-white opacity-50 small">
         SautiYaAfya v9.6.0 (Beta)
       </div>
     </div>

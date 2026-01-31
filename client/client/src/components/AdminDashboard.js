@@ -49,8 +49,8 @@ const AdminDashboard = () => {
     <div className="container p-0">
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h3 className="fw-bold text-dark-brown"><FaUserShield className="me-2"/> System Administration</h3>
-            <p className="text-dark-brown opacity-75 mb-0">Manage access and permissions</p>
+            <h3 className="fw-bold text-white"><FaUserShield className="me-2"/> System Administration</h3>
+            <p className="text-white-50 opacity-75 mb-0">Manage access and permissions</p>
         </div>
         
         <button className="btn btn-primary shadow-sm rounded-pill px-4" onClick={handleAddUser}>
@@ -59,14 +59,14 @@ const AdminDashboard = () => {
       </div>
 
       <div className="glass-card overflow-hidden">
-        <div className="px-4 py-3 border-bottom border-light d-flex justify-content-between align-items-center bg-white bg-opacity-10">
-          <span className="fw-bold text-dark-brown">Authorized Personnel</span>
+        <div className="px-4 py-3 border-bottom border-secondary d-flex justify-content-between align-items-center" style={{background: 'rgba(0,0,0,0.2)'}}>
+          <span className="fw-bold text-white">Authorized Personnel</span>
           <span className="badge bg-white text-dark shadow-sm">{users.length} Users</span>
         </div>
         
         <div className="table-responsive">
-            <table className="table table-hover mb-0 align-middle" style={{'--bs-table-bg': 'transparent'}}>
-            <thead className="text-muted small text-uppercase" style={{background: 'rgba(255,255,255,0.2)'}}>
+            <table className="table table-hover mb-0 align-middle text-white" style={{'--bs-table-bg': 'transparent', '--bs-table-hover-bg': 'rgba(255,255,255,0.05)'}}>
+            <thead className="text-white-50 small text-uppercase" style={{background: 'rgba(255,255,255,0.05)'}}>
                 <tr>
                 <th className="px-4 border-0">Role</th>
                 <th className="border-0">Identity</th>
@@ -76,29 +76,29 @@ const AdminDashboard = () => {
             </thead>
             <tbody>
                 {users.map(u => (
-                <tr key={u.id} style={{borderBottom: '1px solid rgba(255,255,255,0.2)'}}>
+                <tr key={u.id} style={{borderBottom: '1px solid rgba(255,255,255,0.1)'}}>
                     <td className="px-4">
-                        <span className={`badge rounded-pill ${u.role === 'DOCTOR' ? 'bg-primary' : u.role === 'ADMIN' ? 'bg-dark' : 'bg-success'} shadow-sm`}>
+                        <span className={`badge rounded-pill ${u.role === 'DOCTOR' ? 'bg-primary' : u.role === 'ADMIN' ? 'bg-secondary' : 'bg-success'} shadow-sm`}>
                             {u.role}
                         </span>
                     </td>
                     <td>
                         <div className="d-flex align-items-center">
-                            <div className="bg-white rounded-circle p-2 me-3 text-muted shadow-sm">
+                            <div className="bg-light rounded-circle p-2 me-3 text-dark shadow-sm opacity-75">
                                 <FaIdBadge />
                             </div>
                             <div>
-                                <div className="fw-bold text-dark-brown">{u.email || "No Email"}</div>
-                                <small className="text-muted font-monospace" style={{fontSize: '0.7rem'}}>{u.firebase_uid.substring(0, 12)}...</small>
+                                <div className="fw-bold text-white">{u.email || "No Email"}</div>
+                                <small className="text-white-50 font-monospace" style={{fontSize: '0.7rem'}}>{u.firebase_uid.substring(0, 12)}...</small>
                             </div>
                         </div>
                     </td>
-                    <td className="text-dark-brown fw-bold">
-                        {u.county || <span className="text-muted fst-italic fw-normal">All Counties (Global)</span>}
+                    <td className="text-white fw-bold">
+                        {u.county || <span className="text-white-50 fst-italic fw-normal">All Counties (Global)</span>}
                     </td>
                     <td className="px-4 text-end">
                     {u.role !== 'ADMIN' && (
-                        <button onClick={() => deleteUser(u.id)} className="btn btn-sm btn-light border text-danger hover-shadow">
+                        <button onClick={() => deleteUser(u.id)} className="btn btn-sm btn-outline-danger hover-shadow">
                             <FaTrash /> Remove
                         </button>
                     )}

@@ -4,10 +4,13 @@ import { useNavigate, Link } from 'react-router-dom';
 import { createUserWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 import axios from 'axios';
-import { FaGoogle, FaUserPlus } from 'react-icons/fa';
+import { 
+  FaGoogle, FaUserPlus, FaUserMd, FaLock, 
+  FaArrowRight, FaStethoscope, FaBrain, FaChartLine, FaShieldAlt
+} from 'react-icons/fa';
 import config from '../config';
 
-const Signup = () => {
+const Signup = ({ setRole }) => {
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -19,52 +22,32 @@ const Signup = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // ✅ Email regex (RFC-compliant enough for real apps)
-  const emailRegex =
-    /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-  // ✅ Strong password regex
-  // Minimum 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
-  const strongPasswordRegex =
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-
-  // Glass input style
-  const glassInputStyle = {
-    background: 'rgba(255,255,255,0.45)',
-    border: '1px solid rgba(255,255,255,0.6)',
-    color: '#2d3436',
-    backdropFilter: 'blur(6px)',
-    borderRadius: '12px',
-    padding: '11px'
-  };
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
   const registerInBackend = async (user) => {
     const token = await user.getIdToken();
-
-    await axios.post(
+    const response = await axios.post(
       `${config.API_BASE_URL}/register`,
       {},
-      {
-        headers: { Authorization: `Bearer ${token}` }
-      }
+      { headers: { Authorization: `Bearer ${token}` } }
     );
+    // Auto-set role after registration
+    if (response.data.role && setRole) {
+        setRole(response.data.role);
+    }
   };
 
   const handleSignup = async (e) => {
     e.preventDefault();
     setError('');
 
-    // 🔐 Frontend validations
     if (!emailRegex.test(formData.email)) {
       return setError('Please enter a valid email address.');
     }
-
     if (!strongPasswordRegex.test(formData.password)) {
-      return setError(
-        'Password must be at least 8 characters and include uppercase, lowercase, number, and special character.'
-      );
+      return setError('Password must be at least 8 chars (A-Z, a-z, 0-9, special char).');
     }
-
     if (formData.password !== formData.confirmPassword) {
       return setError('Passwords do not match.');
     }
@@ -79,8 +62,10 @@ const Signup = () => {
       );
 
       await registerInBackend(userCredential.user);
-      navigate('/dashboard');
+      // Navigate based on default role (usually CHW for new signups unless admin changes it)
+      navigate('/chw'); 
     } catch (err) {
+      console.error(err);
       setError(err.response?.data?.message || err.message);
     } finally {
       setLoading(false);
@@ -91,99 +76,163 @@ const Signup = () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       await registerInBackend(result.user);
-      navigate('/dashboard');
+      navigate('/chw');
     } catch (err) {
       setError('Google signup failed.');
     }
   };
 
   return (
-    <div className="min-vh-100 d-flex align-items-center justify-content-center">
-      <div
-        className="glass-card p-4 shadow-lg"
-        style={{ maxWidth: '380px', width: '92%', borderRadius: '22px' }}
+    <div className="container-fluid vh-100 d-flex align-items-center justify-content-center p-0">
+      
+      {/* ✨ HERO CARD: Split Layout */}
+      <div 
+        className="d-flex flex-column flex-md-row overflow-hidden shadow-lg animate-slide-in"
+        style={{ 
+          maxWidth: '1100px', 
+          width: '90%', 
+          minHeight: '650px',
+          background: 'rgba(255, 255, 255, 0.95)', 
+          borderRadius: '24px',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.4)'
+        }}
       >
-        <div className="text-center mb-4">
-          <div
-            className="bg-white rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm mb-2"
-            style={{ width: '56px', height: '56px' }}
-          >
-            <FaUserPlus className="text-accent fs-5" />
+        
+        {/* 👈 LEFT PANEL: "Clinical Navy" */}
+        <div className="col-12 col-md-5 p-5 d-flex flex-column justify-content-center text-white position-relative overflow-hidden" 
+             style={{
+               background: 'linear-gradient(160deg, #1a2b3c 0%, #2c3e50 100%)'
+             }}>
+          
+          <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'url("https://www.transparenttextures.com/patterns/cubes.png")', opacity: 0.05}}></div>
+
+          <div className="mb-5 position-relative z-1">
+            <div className="d-inline-flex align-items-center justify-content-center bg-white text-dark rounded-3 mb-4 shadow-sm" style={{width: '64px', height: '64px'}}>
+              <FaUserPlus size={28} className="text-dark" />
+            </div>
+            <h1 className="fw-bold display-5 mb-2">Join SautiYaAfya</h1>
+            <p className="lead fw-light opacity-75 mb-0">AI-Powered Pediatric Care</p>
           </div>
-          <h4 className="fw-bold text-dark-brown mb-1">Create Account</h4>
-          <p className="text-dark-brown opacity-75 small">
-            Join the SautiYaAfya Platform
-          </p>
+
+          <div className="d-flex flex-column gap-5 position-relative z-1">
+            <div className="d-flex">
+              <div className="me-3"><FaStethoscope className="fs-4 text-white opacity-75" /></div>
+              <div>
+                <h6 className="fw-bold mb-1">For Medical Professionals</h6>
+                <p className="small opacity-75 mb-0">Designed for CHWs, Nurses, and Doctors to streamline respiratory triage.</p>
+              </div>
+            </div>
+
+            <div className="d-flex">
+              <div className="me-3"><FaChartLine className="fs-4 text-white opacity-75" /></div>
+              <div>
+                <h6 className="fw-bold mb-1">Instant Analysis</h6>
+                <p className="small opacity-75 mb-0">Get real-time preliminary assessments for pneumonia and asthma.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-auto pt-5 opacity-50 small">
+            &copy; 2026 SautiYaAfya Research • System v2.0.4
+          </div>
         </div>
 
-        {error && (
-          <div className="alert alert-danger small border-0 shadow-sm">
-            {error}
+        {/* 👉 RIGHT PANEL: Signup Form */}
+        <div className="col-12 col-md-7 p-5 d-flex align-items-center bg-white">
+          <div className="w-100 px-md-4">
+            <div className="text-center mb-5">
+              <h3 className="fw-bold text-dark-brown mb-1">Create Account</h3>
+              <p className="text-muted">Register to access the diagnostic tools.</p>
+            </div>
+
+            {error && <div className="alert alert-danger text-center shadow-sm py-2 small border-0 bg-danger text-white mb-4">{error}</div>}
+
+            <form onSubmit={handleSignup}>
+              <div className="mb-3">
+                <label className="form-label small fw-bold text-muted text-uppercase">Email Address</label>
+                <div className="input-group">
+                  <span className="input-group-text border-0 bg-light"><FaUserMd className="text-muted"/></span>
+                  <input 
+                    type="email" 
+                    className="form-control bg-light border-0 py-3" 
+                    placeholder="doctor@hospital.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    required 
+                    style={{boxShadow: 'none'}}
+                  />
+                </div>
+              </div>
+
+              <div className="mb-3">
+                <label className="form-label small fw-bold text-muted text-uppercase">Password</label>
+                <div className="input-group">
+                  <span className="input-group-text border-0 bg-light"><FaLock className="text-muted"/></span>
+                  <input 
+                    type="password" 
+                    className="form-control bg-light border-0 py-3" 
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    required 
+                    style={{boxShadow: 'none'}}
+                  />
+                </div>
+                <small className="text-muted" style={{fontSize: '0.75rem'}}>
+                   Must include: 8+ chars, uppercase, number, symbol.
+                </small>
+              </div>
+
+              <div className="mb-4">
+                <label className="form-label small fw-bold text-muted text-uppercase">Confirm Password</label>
+                <div className="input-group">
+                  <span className="input-group-text border-0 bg-light"><FaLock className="text-muted"/></span>
+                  <input 
+                    type="password" 
+                    className="form-control bg-light border-0 py-3" 
+                    placeholder="••••••••"
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    required 
+                    style={{boxShadow: 'none'}}
+                  />
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                className="btn btn-dark w-100 py-3 rounded-3 fw-bold shadow-lg d-flex align-items-center justify-content-center mb-3 transition-transform"
+                disabled={loading}
+                style={{background: '#2c3e50', border: 'none'}}
+              >
+                {loading ? 'Registering...' : <>Create Account <FaArrowRight className="ms-2"/></>}
+              </button>
+            </form>
+
+            <div className="d-flex align-items-center mb-4">
+                <hr className="flex-grow-1" style={{borderColor: '#eee'}}/>
+                <span className="mx-3 small text-muted fw-bold">OR</span>
+                <hr className="flex-grow-1" style={{borderColor: '#eee'}}/>
+            </div>
+
+            <button
+               onClick={handleGoogleSignup}
+               className="btn w-100 py-3 rounded-3 shadow-sm d-flex align-items-center justify-content-center mb-4 border"
+               disabled={loading}
+               style={{background: '#fff', color: '#444'}}
+            >
+               <FaGoogle className="me-2 text-danger" />
+               Sign up with Google
+            </button>
+
+            <div className="text-center">
+              <small className="text-muted">
+                Already have an account? <Link to="/" className="fw-bold text-dark" style={{textDecoration: 'none'}}>Login Here</Link>
+              </small>
+            </div>
           </div>
-        )}
-
-        <form onSubmit={handleSignup}>
-          <input
-            type="email"
-            className="form-control mb-3"
-            placeholder="Email Address"
-            style={glassInputStyle}
-            required
-            onChange={(e) =>
-              setFormData({ ...formData, email: e.target.value })
-            }
-          />
-
-          <input
-            type="password"
-            className="form-control mb-3"
-            placeholder="Password"
-            style={glassInputStyle}
-            required
-            onChange={(e) =>
-              setFormData({ ...formData, password: e.target.value })
-            }
-          />
-
-          <input
-            type="password"
-            className="form-control mb-3"
-            placeholder="Confirm Password"
-            style={glassInputStyle}
-            required
-            onChange={(e) =>
-              setFormData({ ...formData, confirmPassword: e.target.value })
-            }
-          />
-
-          <button
-            type="submit"
-            className="btn btn-primary w-100 py-2 rounded-pill fw-bold mb-3"
-            disabled={loading}
-          >
-            {loading ? 'Creating Account...' : 'Sign Up'}
-          </button>
-        </form>
-
-        <hr className="my-4" />
-
-        <button
-          onClick={handleGoogleSignup}
-          className="btn bg-white w-100 py-2 rounded-pill shadow-sm fw-bold mb-3"
-          disabled={loading}
-        >
-          <FaGoogle className="me-2 text-danger" />
-          Sign up with Google
-        </button>
-
-        <div className="text-center">
-          <small className="text-dark-brown opacity-75">
-            Already have an account?{' '}
-            <Link to="/" className="fw-bold">
-              Login here
-            </Link>
-          </small>
         </div>
+
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   FaUserMd, FaChartPie, FaGlobeAfrica, FaCog, 
   FaSignOutAlt, FaBars, FaTimes, FaUserInjured,
-  FaBook // 🟢 Added Icon
+  FaBook 
 } from 'react-icons/fa'; 
 import './Sidebar.css'; 
 
@@ -14,17 +14,17 @@ const Sidebar = ({ role, onLogout }) => {
   const toggle = () => setIsOpen(!isOpen);
   const closeMenu = () => setIsOpen(false);
 
-  // 🔹 GHOST MODE STYLE (Matches SmartRecorder.js)
+  // 🔹 GHOST MODE STYLE (Matches New Dark Theme)
   const sidebarStyle = {
     background: 'rgba(255, 255, 255, 0.05)',
-    borderRight: '1px solid rgba(255, 255, 255, 0.2)',
+    borderRight: '1px solid rgba(255, 255, 255, 0.1)',
     backdropFilter: 'none', 
   };
 
   return (
     <>
       {/* 📱 HAMBURGER BUTTON */}
-      <button className="mobile-toggle-btn" onClick={toggle}>
+      <button className="mobile-toggle-btn text-white" onClick={toggle}>
         {isOpen ? <FaTimes /> : <FaBars />}
       </button>
 
@@ -42,7 +42,7 @@ const Sidebar = ({ role, onLogout }) => {
            <div style={{
              width:'35px', 
              height:'35px', 
-             background:'#0d6efd', 
+             background:'#0984e3', // Matches Accent Blue
              borderRadius:'8px', 
              display:'flex', 
              alignItems:'center', 
@@ -53,7 +53,8 @@ const Sidebar = ({ role, onLogout }) => {
              <FaUserMd />
            </div>
            <div>
-             <h5 className="mb-0 fw-bold" style={{color:'#2d3436'}}>SautiYaAfya</h5>
+             {/* 🟢 FIX: Changed text color to White for Dark Mode */}
+             <h5 className="mb-0 fw-bold text-white">SautiYaAfya</h5>
              <small className="text-muted" style={{fontSize:'0.7rem'}}>AI TRIAGE SYSTEM</small>
            </div>
         </div>
@@ -80,9 +81,8 @@ const Sidebar = ({ role, onLogout }) => {
             </NavLink>
           )}
           
-          <div className="my-2 border-top" style={{borderColor: 'rgba(255,255,255,0.2)'}}></div>
+          <div className="my-2 border-top" style={{borderColor: 'rgba(255,255,255,0.1)'}}></div>
 
-          {/* 🟢 NEW: USER GUIDE LINK */}
           <NavLink to="/guide" onClick={closeMenu} className="nav-link">
             <FaBook className="me-3" /> User Guide
           </NavLink>
@@ -95,7 +95,7 @@ const Sidebar = ({ role, onLogout }) => {
         {/* LOGOUT BUTTON */}
         <div className="mt-auto">
           <button 
-            className="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center py-2 shadow-sm" 
+            className="btn btn-outline-danger w-100 d-flex align-items-center justify-content-center py-2 shadow-sm text-white border-danger" 
             style={{borderRadius: '12px', borderWidth: '1px'}}
             onClick={onLogout}
           >

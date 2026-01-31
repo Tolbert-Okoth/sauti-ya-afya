@@ -18,15 +18,14 @@ const AdminConfig = () => {
     retain_logs: true
   });
 
-  // Custom Glass Input Style
+  // 🔹 DARK GLASS INPUT STYLE
   const glassInputStyle = {
-      background: 'rgba(255,255,255,0.4)',
-      border: '1px solid rgba(255,255,255,0.3)',
-      color: '#2d3436',
+      background: 'rgba(0, 0, 0, 0.2)', 
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      color: '#fff',
       fontWeight: '500'
   };
 
-  // 1. Load Config
   useEffect(() => {
     const fetchConfig = async () => {
       try {
@@ -44,9 +43,8 @@ const AdminConfig = () => {
     fetchConfig();
   }, []);
 
-  // 2. Save Config Helper
   const saveConfig = async (newConfig) => {
-    setConfig(newConfig); // Optimistic Update
+    setConfig(newConfig); 
     try {
       const token = await auth.currentUser.getIdToken();
       await axios.put('http://localhost:5000/api/settings', 
@@ -66,25 +64,25 @@ const AdminConfig = () => {
     saveConfig({ ...config, confidence_threshold: parseFloat(e.target.value) });
   };
 
-  if (loading) return <div className="p-5 text-center text-dark-brown">Loading Admin Config...</div>;
+  if (loading) return <div className="p-5 text-center text-white">Loading Admin Config...</div>;
 
   return (
     <div className="container p-0" style={{ maxWidth: '700px' }}>
-      <button className="btn btn-link text-dark-brown text-decoration-none mb-3 p-0 fw-bold" onClick={() => navigate(-1)}>
+      <button className="btn btn-link text-white text-decoration-none mb-3 p-0 fw-bold" onClick={() => navigate(-1)}>
         <FaArrowLeft /> {t('back')}
       </button>
 
       <div className="glass-card p-5 border-top border-4 border-danger position-relative overflow-hidden">
         {/* Decorative Background Icon */}
-        <FaRobot className="position-absolute text-dark opacity-10" style={{right: '-30px', bottom: '-30px', fontSize: '12rem'}} />
+        <FaRobot className="position-absolute text-white opacity-10" style={{right: '-30px', bottom: '-30px', fontSize: '12rem'}} />
 
         <div className="d-flex align-items-center mb-5 position-relative">
-            <div className="bg-danger bg-opacity-10 p-3 rounded-circle me-3 text-danger">
+            <div className="bg-danger bg-opacity-25 p-3 rounded-circle me-3 text-white">
                 <FaSlidersH size={24} />
             </div>
             <div>
-                <h4 className="fw-bold text-dark-brown mb-0">{t('menu_admin_config')}</h4>
-                <small className="text-muted">Global System Parameters</small>
+                <h4 className="fw-bold text-white mb-0">{t('menu_admin_config')}</h4>
+                <small className="text-white-50">Global System Parameters</small>
             </div>
         </div>
 
@@ -95,9 +93,9 @@ const AdminConfig = () => {
 
             {/* AI MODEL (Read Only) */}
             <div className="mb-4">
-                <label className="form-label fw-bold text-dark-brown small text-uppercase">{t('ai_model')}</label>
+                <label className="form-label fw-bold text-white-50 small text-uppercase">{t('ai_model')}</label>
                 <div className="input-group">
-                    <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.4)'}}><FaServer className="text-muted"/></span>
+                    <span className="input-group-text border-0" style={{background: 'rgba(255,255,255,0.1)'}}><FaServer className="text-white-50"/></span>
                     <input 
                         type="text" 
                         className="form-control" 
@@ -109,8 +107,8 @@ const AdminConfig = () => {
             </div>
 
             {/* CONFIDENCE SLIDER */}
-            <div className="mb-5 bg-white bg-opacity-25 p-3 rounded border border-light">
-                <label className="form-label fw-bold d-flex justify-content-between align-items-center text-dark-brown mb-3">
+            <div className="mb-5 bg-dark bg-opacity-25 p-3 rounded border border-secondary">
+                <label className="form-label fw-bold d-flex justify-content-between align-items-center text-white mb-3">
                     <span>{t('confidence_threshold')}</span>
                     <span className="badge bg-primary shadow-sm" style={{fontSize: '1rem'}}>{config.confidence_threshold}</span>
                 </label>
@@ -123,17 +121,17 @@ const AdminConfig = () => {
                     value={config.confidence_threshold}
                     onChange={handleSliderChange}
                 />
-                <div className="d-flex justify-content-between small text-muted fw-bold mt-2">
+                <div className="d-flex justify-content-between small text-white-50 fw-bold mt-2">
                     <span>{t('low')} (0.5)</span>
                     <span>{t('strict')} (1.0)</span>
                 </div>
             </div>
 
-            <hr className="text-muted opacity-25 my-4" />
+            <hr className="text-light opacity-25 my-4" />
 
             {/* SYSTEM TOGGLES */}
             <div className="d-flex justify-content-between align-items-center mb-3 p-2 rounded hover-glass">
-                <label className="form-check-label fw-bold text-dark-brown">{t('export_moh')}</label>
+                <label className="form-check-label fw-bold text-white">{t('export_moh')}</label>
                 <div className="form-check form-switch">
                     <input 
                         className="form-check-input" 
@@ -146,7 +144,7 @@ const AdminConfig = () => {
             </div>
 
             <div className="d-flex justify-content-between align-items-center p-2 rounded hover-glass">
-                <label className="form-check-label fw-bold text-dark-brown">{t('retain_logs')}</label>
+                <label className="form-check-label fw-bold text-white">{t('retain_logs')}</label>
                 <div className="form-check form-switch">
                     <input 
                         className="form-check-input" 

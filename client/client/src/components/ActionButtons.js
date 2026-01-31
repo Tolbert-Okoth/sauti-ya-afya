@@ -27,8 +27,9 @@ AI Finding: ${patient.diagnosis}%0a
       <a href={whatsappUrl} target="_blank" rel="noreferrer" className="btn btn-success btn-sm text-white fw-bold">
         <FaWhatsapp className="me-1" /> Refer
       </a>
-      <a href={callUrl} className="btn btn-light btn-sm text-dark fw-bold border">
-        <FaPhone className="me-1 text-primary" /> Call
+      {/* 🟢 Updated Call Button to Outline White for better contrast on dark bg */}
+      <a href={callUrl} className="btn btn-outline-light btn-sm fw-bold">
+        <FaPhone className="me-1" /> Call
       </a>
     </div>
   );

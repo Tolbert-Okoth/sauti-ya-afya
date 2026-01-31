@@ -28,15 +28,15 @@ const Referrals = () => {
     fetchReferrals();
   }, []);
 
-  if (loading) return <div className="p-4 text-center text-dark-brown animate-pulse">Loading Referral Status...</div>;
+  if (loading) return <div className="p-4 text-center text-white animate-pulse">Loading Referral Status...</div>;
 
   return (
     <div className="container p-0">
       <div className="d-flex align-items-center mb-4">
-        <div className="bg-white rounded-circle p-2 text-warning me-3 shadow-sm">
+        <div className="bg-warning rounded-circle p-2 text-dark me-3 shadow-sm">
             <FaExternalLinkAlt />
         </div>
-        <h3 className="fw-bold text-dark-brown mb-0">My Referrals</h3>
+        <h3 className="fw-bold text-white mb-0">My Referrals</h3>
       </div>
       
       <div className="row">
@@ -46,12 +46,12 @@ const Referrals = () => {
               <div className="glass-card p-4 transition-all hover-shadow">
                 <div className="d-flex justify-content-between align-items-start mb-3">
                     <div className="d-flex align-items-center">
-                        <div className="bg-white rounded-circle p-3 text-secondary me-3 shadow-sm d-flex align-items-center justify-content-center" style={{width: '50px', height: '50px'}}>
+                        <div className="bg-primary rounded-circle p-3 text-white me-3 shadow-sm d-flex align-items-center justify-content-center" style={{width: '50px', height: '50px'}}>
                             <FaUserInjured size={24} />
                         </div>
                         <div>
-                            <h5 className="fw-bold text-dark-brown mb-0">{p.name}</h5>
-                            <span className="badge bg-light text-dark border mt-1">Ticket #{p.id.toString().substring(0,4)}</span>
+                            <h5 className="fw-bold text-white mb-0">{p.name}</h5>
+                            <span className="badge bg-secondary text-light border border-secondary mt-1">Ticket #{p.id.toString().substring(0,4)}</span>
                         </div>
                     </div>
                     
@@ -60,10 +60,11 @@ const Referrals = () => {
                     </span>
                 </div>
                 
-                <div className="p-3 rounded mb-3" style={{background: 'rgba(255,255,255,0.3)'}}>
+                {/* 🟢 Darker Glass Box for Diagnosis */}
+                <div className="p-3 rounded mb-3" style={{background: 'rgba(0,0,0,0.2)'}}>
                     <small className="text-muted d-block text-uppercase fw-bold" style={{fontSize: '0.7rem'}}>Diagnosis</small>
-                    <div className="fw-bold text-dark-brown">{p.diagnosis}</div>
-                    <small className="text-muted mt-1 d-block"><FaArrowRight className="me-1 text-accent"/> Referred on {new Date(p.created_at).toLocaleDateString()}</small>
+                    <div className="fw-bold text-white">{p.diagnosis}</div>
+                    <small className="text-muted mt-1 d-block"><FaArrowRight className="me-1 text-info"/> Referred on {new Date(p.created_at).toLocaleDateString()}</small>
                 </div>
 
                 {/* Glass Progress Bar */}
@@ -73,7 +74,7 @@ const Referrals = () => {
                         <span>Doctor Review</span>
                         <span className="opacity-50">Resolution</span>
                     </div>
-                    <div className="progress" style={{height: '8px', background: 'rgba(0,0,0,0.1)', borderRadius: '4px'}}>
+                    <div className="progress" style={{height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px'}}>
                         <div 
                             className="progress-bar progress-bar-striped progress-bar-animated bg-warning" 
                             role="progressbar" 
@@ -88,7 +89,7 @@ const Referrals = () => {
         ) : (
           <div className="col-12 text-center py-5 glass-card text-muted">
             <FaCheckCircle size={40} className="text-success mb-3"/>
-            <h5>All Clear!</h5>
+            <h5 className="text-white">All Clear!</h5>
             <p className="mb-0">You have no pending high-risk referrals.</p>
           </div>
         )}

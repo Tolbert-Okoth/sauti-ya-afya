@@ -43,15 +43,15 @@ const PrivacySettings = () => {
 
   return (
     <div className="container p-0" style={{ maxWidth: '600px' }}>
-      <button className="btn btn-link text-dark-brown text-decoration-none mb-3 p-0 fw-bold" onClick={() => navigate(-1)}>
+      <button className="btn btn-link text-white text-decoration-none mb-3 p-0 fw-bold" onClick={() => navigate(-1)}>
         <FaArrowLeft /> Back
       </button>
 
       <div className="d-flex align-items-center mb-4">
-        <div className="bg-white rounded-circle p-2 text-dark me-3 shadow-sm">
+        <div className="bg-primary rounded-circle p-2 text-white me-3 shadow-sm">
             <FaLock />
         </div>
-        <h4 className="fw-bold text-dark-brown mb-0">Privacy & Security</h4>
+        <h4 className="fw-bold text-white mb-0">Privacy & Security</h4>
       </div>
 
       {/* PASSWORD SECTION */}
@@ -59,14 +59,14 @@ const PrivacySettings = () => {
         <div className="p-4">
             <div className="d-flex justify-content-between align-items-center mb-3 p-2 rounded hover-glass">
                 <div className="d-flex align-items-center">
-                    <FaKey className="text-accent me-3 fs-5" />
+                    <FaKey className="text-warning me-3 fs-5" />
                     <div>
-                        <span className="fw-bold d-block text-dark-brown">Change Password</span>
+                        <span className="fw-bold d-block text-white">Change Password</span>
                         <small className="text-muted">Via Email Reset</small>
                     </div>
                 </div>
                 <button 
-                    className="btn btn-sm btn-dark rounded-pill px-3" 
+                    className="btn btn-sm btn-light rounded-pill px-3 fw-bold" 
                     onClick={handleChangePassword}
                     disabled={loading}
                 >
@@ -74,12 +74,12 @@ const PrivacySettings = () => {
                 </button>
             </div>
             
-            <hr className="text-light opacity-50 my-2"/>
+            <hr className="text-light opacity-25 my-2"/>
 
             <div className="d-flex justify-content-between align-items-center p-2 rounded hover-glass">
                 <div className="d-flex align-items-center">
-                      <FaMobileAlt className="text-secondary me-3 fs-5" />
-                      <span className="text-dark-brown fw-bold">Two-Factor Auth (2FA)</span>
+                      <FaMobileAlt className="text-info me-3 fs-5" />
+                      <span className="text-white fw-bold">Two-Factor Auth (2FA)</span>
                 </div>
                 <div className="form-check form-switch">
                     <input 
@@ -95,13 +95,13 @@ const PrivacySettings = () => {
 
       {/* DATA PROTECTION SECTION */}
       <div className="glass-card p-4">
-          <h6 className="fw-bold mb-3 text-dark-brown d-flex align-items-center">
-              <FaShieldAlt className="me-2 text-accent"/> Data Protection
+          <h6 className="fw-bold mb-3 text-white d-flex align-items-center">
+              <FaShieldAlt className="me-2 text-success"/> Data Protection
           </h6>
           
           <div className="d-flex justify-content-between align-items-center mb-3">
             <div>
-                <label className="form-check-label fw-bold text-dark-brown">Encrypt Local Storage</label>
+                <label className="form-check-label fw-bold text-white">Encrypt Local Storage</label>
                 <p className="small text-muted mb-0">Obfuscate patient data cached on this device.</p>
             </div>
             <div className="form-check form-switch">
@@ -116,7 +116,7 @@ const PrivacySettings = () => {
           </div>
 
           <div className="d-flex justify-content-between align-items-center opacity-50">
-             <label className="form-check-label text-dark-brown">Share Crash Reports</label>
+             <label className="form-check-label text-white">Share Crash Reports</label>
              <div className="form-check form-switch">
                 <input className="form-check-input" type="checkbox" disabled style={{ width: '3em', height: '1.5em' }}/>
              </div>

@@ -20,11 +20,11 @@ const DeviceSettings = () => {
   const dataArrayRef = useRef(null);
   const rafIdRef = useRef(null);
 
-  // Custom Glass Input Style
+  // 🔹 DARK GLASS INPUT STYLE
   const glassInputStyle = {
-      background: 'rgba(255,255,255,0.4)',
-      border: '1px solid rgba(255,255,255,0.3)',
-      color: '#2d3436',
+      background: 'rgba(0, 0, 0, 0.2)', 
+      border: '1px solid rgba(255, 255, 255, 0.2)',
+      color: '#fff',
       backdropFilter: 'blur(5px)'
   };
 
@@ -32,7 +32,6 @@ const DeviceSettings = () => {
   useEffect(() => {
     const getDevices = async () => {
       try {
-        // Request permission briefly to unlock device labels
         await navigator.mediaDevices.getUserMedia({ audio: true });
         
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -53,11 +52,9 @@ const DeviceSettings = () => {
     };
     getDevices();
 
-    // Cleanup on unmount
     return () => stopListening();
   }, []);
 
-  // 2. Real-Time Audio Processing Logic
   const startListening = async () => {
     if (isListening) {
         stopListening();
@@ -80,7 +77,7 @@ const DeviceSettings = () => {
       dataArrayRef.current = new Uint8Array(bufferLength);
 
       setIsListening(true);
-      draw(); // Start the animation loop
+      draw(); 
     } catch (err) {
       console.error("Error accessing mic:", err);
       setPermissionError(true);
@@ -94,22 +91,17 @@ const DeviceSettings = () => {
     setTestLevel(0);
   };
 
-  // 3. The Visualizer Loop (60fps)
   const draw = () => {
     if (!analyserRef.current) return;
 
     analyserRef.current.getByteFrequencyData(dataArrayRef.current);
 
-    // Calculate Average Volume (RMS approximation)
     let sum = 0;
     const len = dataArrayRef.current.length;
     for (let i = 0; i < len; i++) {
         sum += dataArrayRef.current[i];
     }
     const average = sum / len;
-
-    // Normalize signal for UI (Standard speech is usually 30-70 range)
-    // Multiplied by 1.5 to make it responsive
     const visualLevel = Math.min((average / 128) * 100 * 1.5, 100);
     
     setTestLevel(visualLevel);
@@ -118,18 +110,17 @@ const DeviceSettings = () => {
 
   return (
     <div className="container p-0" style={{ maxWidth: '600px' }}>
-      <button className="btn btn-link text-dark-brown text-decoration-none mb-3 p-0 fw-bold" onClick={() => navigate(-1)}>
+      <button className="btn btn-link text-white text-decoration-none mb-3 p-0 fw-bold" onClick={() => navigate(-1)}>
         <FaArrowLeft /> {t('back')}
       </button>
       
       <div className="d-flex align-items-center mb-4">
-          <div className="bg-white rounded-circle p-2 text-dark me-3 shadow-sm">
+          <div className="bg-primary rounded-circle p-2 text-white me-3 shadow-sm">
              <FaMicrophoneAlt />
           </div>
-          <h4 className="fw-bold text-dark-brown mb-0">{t('menu_device')}</h4>
+          <h4 className="fw-bold text-white mb-0">{t('menu_device')}</h4>
       </div>
 
-      {/* Permission Error Alert */}
       {permissionError && (
         <div className="alert alert-danger d-flex align-items-center mb-4 shadow-sm">
             <FaExclamationTriangle className="me-2"/>
@@ -140,25 +131,25 @@ const DeviceSettings = () => {
       )}
 
       <div className="glass-card p-4 mb-4">
-            <label className="form-label fw-bold text-dark-brown small text-uppercase">Microphone Input</label>
+            <label className="form-label fw-bold text-white-50 small text-uppercase">Microphone Input</label>
             <select 
                 className="form-select mb-4 shadow-sm" 
                 style={glassInputStyle}
                 value={selectedMic} 
                 onChange={(e) => {
                     setSelectedMic(e.target.value);
-                    stopListening(); // Reset if mic changes
+                    stopListening();
                 }}
             >
                 {mics.length > 0 ? (
-                    mics.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                    mics.map(m => <option key={m.id} value={m.id} style={{color:'black'}}>{m.label}</option>)
                 ) : (
-                    <option>Loading devices...</option>
+                    <option style={{color:'black'}}>Loading devices...</option>
                 )}
             </select>
 
             <button 
-                className={`btn w-100 mb-3 border-2 ${isListening ? 'btn-danger' : 'btn-outline-dark'}`} 
+                className={`btn w-100 mb-3 border-2 ${isListening ? 'btn-danger' : 'btn-outline-light'}`} 
                 onClick={startListening}
             >
                 <FaMicrophoneAlt className="me-2"/> 
@@ -166,11 +157,11 @@ const DeviceSettings = () => {
             </button>
             
             {/* Real Audio Visualizer Bar */}
-            <div className="d-flex justify-content-between small text-muted mb-1">
+            <div className="d-flex justify-content-between small text-white-50 mb-1">
                 <span>Silence</span>
                 <span>Loud</span>
             </div>
-            <div className="progress" style={{height: '12px', background: 'rgba(0,0,0,0.1)', borderRadius: '6px'}}>
+            <div className="progress" style={{height: '12px', background: 'rgba(255,255,255,0.1)', borderRadius: '6px'}}>
                 <div 
                     className={`progress-bar rounded-pill transition-all ${testLevel > 60 ? 'bg-danger' : 'bg-success'}`} 
                     role="progressbar" 
@@ -178,7 +169,6 @@ const DeviceSettings = () => {
                 ></div>
             </div>
             
-            {/* Real-time Environmental Feedback */}
             <div className="text-center mt-2" style={{height: '20px'}}>
                 {isListening && (
                     <small className={`fw-bold ${testLevel > 60 ? 'text-danger' : 'text-success'}`}>
@@ -190,36 +180,36 @@ const DeviceSettings = () => {
 
       <div className="glass-card p-4">
             <div className="d-flex align-items-center mb-3">
-                <FaSlidersH className="me-2 text-muted"/>
-                <h6 className="fw-bold text-dark-brown mb-0">Recording Parameters</h6>
+                <FaSlidersH className="me-2 text-white-50"/>
+                <h6 className="fw-bold text-white mb-0">Recording Parameters</h6>
             </div>
             
             <div className="mb-4">
-                <label className="small text-muted fw-bold">NOISE SENSITIVITY</label>
+                <label className="small text-white-50 fw-bold">NOISE SENSITIVITY</label>
                 <select className="form-select" style={glassInputStyle}>
-                    <option>Low (Noisy Environment)</option>
-                    <option selected>Medium (Standard)</option>
-                    <option>High (Quiet Room)</option>
+                    <option style={{color:'black'}}>Low (Noisy Environment)</option>
+                    <option selected style={{color:'black'}}>Medium (Standard)</option>
+                    <option style={{color:'black'}}>High (Quiet Room)</option>
                 </select>
             </div>
 
             <div className="mb-2">
-                <label className="small text-muted fw-bold d-flex align-items-center">
+                <label className="small text-white-50 fw-bold d-flex align-items-center">
                     MAX DURATION <FaLock className="ms-2 opacity-50" size={10}/>
                 </label>
                 <input 
                     type="text" 
-                    className="form-control text-muted fst-italic" 
+                    className="form-control text-white-50 fst-italic" 
                     value="30 seconds" 
                     disabled 
-                    style={{...glassInputStyle, background: 'rgba(0,0,0,0.05)', cursor: 'not-allowed'}} 
+                    style={{...glassInputStyle, background: 'rgba(0,0,0,0.2)', cursor: 'not-allowed'}} 
                 />
-                <small className="text-muted ms-1" style={{fontSize:'0.7rem'}}>Locked by Admin Policy</small>
+                <small className="text-white-50 ms-1" style={{fontSize:'0.7rem'}}>Locked by Admin Policy</small>
             </div>
       </div>
       
       <div className="alert mt-3 small shadow-sm border-0 d-flex align-items-center" 
-           style={{background: 'rgba(255,243,205,0.7)', color: '#856404', backdropFilter: 'blur(5px)'}}>
+           style={{background: 'rgba(255,243,205,0.1)', color: '#ffeaa7', border: '1px solid rgba(255,255,255,0.1)'}}>
         <span className="me-2 fs-5">⚠</span> Ensure you are in a quiet environment before screening patients.
       </div>
     </div>

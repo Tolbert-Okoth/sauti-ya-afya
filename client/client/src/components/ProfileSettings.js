@@ -10,25 +10,25 @@ const ProfileSettings = ({ role }) => {
 
   return (
     <div className="container p-0" style={{ maxWidth: '600px' }}>
-      <button className="btn btn-link text-dark-brown text-decoration-none mb-3 p-0 fw-bold" onClick={() => navigate(-1)}>
+      <button className="btn btn-link text-white text-decoration-none mb-3 p-0 fw-bold" onClick={() => navigate(-1)}>
         <FaArrowLeft /> Back
       </button>
 
       <div className="glass-card text-center p-5 mb-4 position-relative overflow-hidden">
-        {/* Decorative background circle */}
-        <div className="position-absolute bg-white opacity-25 rounded-circle" style={{width: '200px', height: '200px', top: '-100px', left: '50%', transform: 'translateX(-50%)'}}></div>
+        {/* Decorative background circle (Darker) */}
+        <div className="position-absolute bg-white opacity-10 rounded-circle" style={{width: '200px', height: '200px', top: '-100px', left: '50%', transform: 'translateX(-50%)'}}></div>
         
         <div className="position-relative">
-            <div className="mb-3 d-inline-block p-1 bg-white rounded-circle shadow-sm">
-                 <div className="bg-light rounded-circle p-4 text-secondary">
-                    <FaUserCircle size={80} />
+            <div className="mb-3 d-inline-block p-1 bg-white rounded-circle shadow-sm opacity-75">
+                 <div className="bg-dark rounded-circle p-4 text-secondary">
+                    <FaUserCircle size={80} className="text-dark" />
                  </div>
             </div>
             
-            <h4 className="fw-bold text-dark-brown mb-1">{user?.email}</h4>
+            <h4 className="fw-bold text-white mb-1">{user?.email}</h4>
             
             <div className="mt-2">
-                <span className={`badge rounded-pill shadow-sm px-3 py-2 ${role === 'DOCTOR' ? 'bg-primary' : role === 'ADMIN' ? 'bg-dark' : 'bg-success'}`}>
+                <span className={`badge rounded-pill shadow-sm px-3 py-2 ${role === 'DOCTOR' ? 'bg-primary' : role === 'ADMIN' ? 'bg-secondary' : 'bg-success'}`}>
                     {role === 'DOCTOR' && <FaUserMd className="me-2"/>}
                     {role} ACCOUNT
                 </span>
@@ -37,25 +37,25 @@ const ProfileSettings = ({ role }) => {
       </div>
 
       <div className="glass-card p-4">
-        <h6 className="fw-bold text-dark-brown mb-3 border-bottom border-light pb-2">System Identification</h6>
+        <h6 className="fw-bold text-white mb-3 border-bottom border-secondary pb-2">System Identification</h6>
         
         <div className="d-flex align-items-center mb-4">
-            <div className="bg-white rounded-circle p-2 me-3 text-accent shadow-sm">
+            <div className="bg-primary rounded-circle p-2 me-3 text-white shadow-sm">
                 <FaIdBadge size={20}/>
             </div>
             <div>
                 <label className="small text-muted d-block text-uppercase fw-bold" style={{fontSize: '0.7rem'}}>Unique ID (UID)</label>
-                <span className="fw-bold text-dark-brown font-monospace">{user?.uid}</span>
+                <span className="fw-bold text-white font-monospace">{user?.uid}</span>
             </div>
         </div>
         
         <div className="d-flex align-items-center">
-            <div className="bg-white rounded-circle p-2 me-3 text-danger shadow-sm">
+            <div className="bg-danger rounded-circle p-2 me-3 text-white shadow-sm">
                 <FaMapMarkerAlt size={20}/>
             </div>
             <div>
                 <label className="small text-muted d-block text-uppercase fw-bold" style={{fontSize: '0.7rem'}}>Assigned Jurisdiction</label>
-                <span className="fw-bold text-dark-brown">Turkana County (Default)</span>
+                <span className="fw-bold text-white">Turkana County (Default)</span>
             </div>
         </div>
       </div>
