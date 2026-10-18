@@ -25,14 +25,14 @@ from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from torchvision import models
 
 import audio_pipeline as ap
-from pediatric_data import sprsound_recordings
+from pediatric_data import sprsound_recordings, sprsound_sound_recordings, window_label
 from noise_mix import SYNTHETIC, mix, noise_groups, synthetic_noise
 
 CLASS_DIRS = ['asthma_wheeze', 'normal', 'pneumonia']
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']   # index order used by analyzer.py
 AUDIO_EXTS = ('.wav', '.mp3', '.webm', '.m4a', '.flac', '.ogg', '.aac')
 EXCLUSIONS_FILE = 'data_exclusions.txt'
-MODEL_PATH = 'sauti_mobilenet_v6.pth'
+MODEL_PATH = 'sauti_mobilenet_v7.pth'
 METRICS_PATH = 'model_metrics.json'
 
 
@@ -96,7 +96,7 @@ def split_by_patient(recordings, seed, val_frac=0.15, test_frac=0.15):
     rng = random.Random(seed)
     patients_by_class = defaultdict(set)
     for r in recordings:
-        patients_by_class[(r['source'], r['label'])].add(r['patient'])
+        patients_by_class[(r['source'], r.get('patient_label', r['label']))].add(r['patient'])
     assign = {}
     for _, patients in sorted(patients_by_class.items()):
         patients = sorted(patients)
@@ -134,22 +134,27 @@ def featurise(recordings, noise_dir="", noise_copies=0, seed=0):
             noise = (ap.load_audio(groups[group][rng.integers(len(groups[group]))]) if group in groups
                      else synthetic_noise(group, len(y), rng))
             versions.append(mix(y, noise, rng.uniform(0, 20), rng))
-        tensors = []
+        items = []   # (tensor, window label or None)
         for v in versions:
-            usable, _, _, _ = ap.analysis_windows(v)
-            tensors.extend(ap.window_tensor(w).half() for w in usable)   # float16 halves memory
-        per_recording.append(tensors)
+            usable, _, _, _, starts = ap.analysis_windows(v, return_starts=True)
+            for w, start in zip(usable, starts):
+                label = (window_label(r['events'], start, start + ap.WINDOW_SECONDS, CLASS_DIRS)
+                         if 'events' in r else r['label'])
+                items.append((ap.window_tensor(w).half(), label))   # float16 halves memory
+        per_recording.append(items)
         if (i + 1) % 100 == 0:
             print(f"   featurised {i + 1}/{len(recordings)}")
     return per_recording
 
 
 def windows_dataset(recordings, feats):
+    """Training windows with their own labels; windows no annotated event overlaps are skipped."""
     xs, ys = [], []
-    for r, tensors in zip(recordings, feats):
-        for t in tensors:
-            xs.append(t)
-            ys.append(r['label'])
+    for items in feats:
+        for t, label in items:
+            if label is not None:
+                xs.append(t)
+                ys.append(label)
     return torch.stack(xs), torch.tensor(ys)
 
 
@@ -174,11 +179,12 @@ def recording_probs(model, feats, device):
     """Mean softmax over a recording's windows (same aggregation as analyzer.py)."""
     model.eval()
     out = []
-    for tensors in feats:
-        if not tensors:
+    for items in feats:
+        if not items:
             out.append(None)
             continue
-        probs = torch.softmax(model(torch.stack(tensors).float().to(device)), dim=1).mean(dim=0)
+        batch = torch.stack([t for t, _ in items]).float().to(device)
+        probs = torch.softmax(model(batch), dim=1).mean(dim=0)
         out.append(probs.cpu())
     return out
 
@@ -254,6 +260,9 @@ def main():
                         help='noise clips (one sub-folder per group) mixed into TRAINING recordings')
     parser.add_argument('--noise-copies', type=int, default=2, help='noisy copies per training recording')
     parser.add_argument('--sprsound-dir', default='', help='SPRSound checkout (paediatric data, pediatric_data.py)')
+    parser.add_argument('--labels', choices=['diagnosis', 'sound'], default='diagnosis',
+                        help="'sound': train ONLY on SPRSound labelled by audible pattern "
+                             "(Asthma=wheeze-type, Pneumonia=crackles, Normal), per 5 s window")
     parser.add_argument('--max-train-per-class', type=int, default=0,
                         help='cap training recordings per class (whole patients), 0 = no cap')
     args = parser.parse_args()
@@ -261,9 +270,14 @@ def main():
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    recordings = collect_recordings(args.data)
-    if args.sprsound_dir:
-        recordings += sprsound_recordings(args.sprsound_dir, CLASS_DIRS)
+    if args.labels == 'sound':
+        if not args.sprsound_dir:
+            raise SystemExit("--labels sound needs --sprsound-dir")
+        recordings = sprsound_sound_recordings(args.sprsound_dir, CLASS_DIRS)
+    else:
+        recordings = collect_recordings(args.data)
+        if args.sprsound_dir:
+            recordings += sprsound_recordings(args.sprsound_dir, CLASS_DIRS)
     splits = split_by_patient(recordings, args.seed)
     splits['train'] = cap_per_class(splits['train'], args.max_train_per_class, args.seed)
     for name in ('train', 'val', 'test'):
@@ -321,6 +335,9 @@ def main():
         'noise_augmentation': {'dir': os.path.basename(os.path.normpath(args.noise_aug_dir)) if args.noise_aug_dir else None,
                                'copies': args.noise_copies if args.noise_aug_dir else 0, 'snr_db': [0, 20]},
         'sprsound': bool(args.sprsound_dir),
+        'labels': args.labels,
+        'class_meaning': ({'Asthma': 'wheeze-type sounds (wheeze, rhonchi, stridor)', 'Normal': 'normal breath sounds',
+                           'Pneumonia': 'crackles (fine/coarse)'} if args.labels == 'sound' else 'diagnosis'),
         'max_train_per_class': args.max_train_per_class,
         'note': ("Held-out patients only, reported overall and per age group. 'child' = SPRSound "
                  "(Shanghai, ages 1 month-18 years) plus KAUH patients under 18; 'unknown' = ICBHI and "

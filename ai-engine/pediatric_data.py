@@ -71,3 +71,77 @@ def sprsound_recordings(root, class_dirs):
                                "source": "sprsound", "age_group": "child", "age": age})
     print(f"SPRSound: {len(recordings)} recordings used, skipped {skipped}")
     return recordings
+
+
+# ---------------------------------------------------------------------------
+# Sound-pattern labels (what is AUDIBLE), from the paediatricians' event annotations.
+# A child's diagnosis is not audible in most single recordings (70-80% of recordings
+# of sick children sound normal), so the model learns sounds; diagnosis is per child.
+# ---------------------------------------------------------------------------
+CONTINUOUS_EVENTS = {"Wheeze", "Rhonchi", "Stridor"}        # CAS -> "asthma_wheeze" class
+CRACKLE_EVENTS = {"Fine Crackle", "Coarse Crackle"}         # DAS -> "pneumonia" class
+BOTH_EVENTS = {"Wheeze+Crackle"}
+SEVERITY = {"normal": 0, "asthma_wheeze": 1, "pneumonia": 2}  # crackles outrank wheeze (pneumonia pathway)
+
+
+def event_class(event_type):
+    if event_type in CRACKLE_EVENTS or event_type in BOTH_EVENTS:
+        return "pneumonia"
+    if event_type in CONTINUOUS_EVENTS:
+        return "asthma_wheeze"
+    return "normal"
+
+
+def worst(classes):
+    return max(classes, key=SEVERITY.get, default="normal")
+
+
+def sprsound_sound_recordings(root, class_dirs):
+    """Every annotated SPRSound recording, labelled by audible sound pattern.
+
+    Each recording dict carries 'events' [(start_s, end_s, class_dir)] so training can label
+    each 5 s window by what is heard inside it; 'label' is the recording-level pattern and
+    'patient_label' the child's worst pattern (used to stratify the split).
+    """
+    recordings, skipped = [], {"poor_quality": 0, "no_annotation": 0, "adult": 0}
+    for wav_dir, json_dir in RECORDING_DIRS:
+        annotations = {os.path.basename(p)[:-5]: p
+                       for p in glob.glob(os.path.join(root, json_dir, "**", "*.json"), recursive=True)}
+        for wav in sorted(glob.glob(os.path.join(root, wav_dir, "*.wav"))):
+            name = os.path.basename(wav)[:-4]
+            pid, age = name.split("_")[0].zfill(8), float(name.split("_")[1])
+            if name not in annotations:
+                skipped["no_annotation"] += 1
+                continue
+            with open(annotations[name], encoding="utf-8") as fh:
+                ann = json.load(fh)
+            if ann.get("record_annotation") == "Poor Quality":
+                skipped["poor_quality"] += 1
+                continue
+            events = [(int(e["start"]) / 1000, int(e["end"]) / 1000, event_class(e["type"]))
+                      for e in ann.get("event_annotation") or []]
+            if not events:
+                skipped["no_annotation"] += 1
+                continue
+            if age >= 18:
+                skipped["adult"] += 1
+                continue
+            recordings.append({"path": wav, "label": class_dirs.index(worst(c for _, _, c in events)),
+                               "events": [(s, e, class_dirs.index(c)) for s, e, c in events],
+                               "patient": f"sprs:{pid}", "source": "sprsound", "age_group": "child", "age": age})
+    by_patient = {}
+    for r in recordings:
+        by_patient[r["patient"]] = max(by_patient.get(r["patient"], 0), SEVERITY[class_dirs[r["label"]]])
+    inverse = {v: k for k, v in SEVERITY.items()}
+    for r in recordings:
+        r["patient_label"] = class_dirs.index(inverse[by_patient[r["patient"]]])
+    print(f"SPRSound (sound labels): {len(recordings)} recordings, {len(by_patient)} children, skipped {skipped}")
+    return recordings
+
+
+def window_label(events, start_s, end_s, class_dirs):
+    """Worst sound class (index) among events overlapping [start_s, end_s); None if no event overlaps."""
+    overlapping = [c for s, e, c in events if s < end_s and e > start_s]
+    if not overlapping:
+        return None
+    return max(overlapping, key=lambda c: SEVERITY[class_dirs[c]])

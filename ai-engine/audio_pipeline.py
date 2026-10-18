@@ -17,7 +17,7 @@ from torchvision import transforms
 
 from denoise import denoise
 
-PIPELINE_VERSION = 3   # v3: denoise.py noise reduction before windowing
+PIPELINE_VERSION = 4   # v3: denoise.py before windowing; v4: mel spectrogram capped at 4 kHz
 
 SAMPLE_RATE = 16000
 WINDOW_SECONDS = 5
@@ -34,7 +34,9 @@ MAX_ARTIFACT_FRACTION = 0.4   # voices/crying/friction share above which a windo
 TOP_DB = 80.0
 FFMPEG_TIMEOUT_SECONDS = 60
 
-_mel = T.MelSpectrogram(sample_rate=SAMPLE_RATE, n_mels=128, n_fft=2048, hop_length=512, power=2.0)
+# f_max 4 kHz: stethoscope datasets (e.g. SPRSound, 8 kHz) have nothing above it, phones do;
+# capping keeps both looking the same to the model. Lung sounds of interest are < 2 kHz.
+_mel = T.MelSpectrogram(sample_rate=SAMPLE_RATE, n_mels=128, n_fft=2048, hop_length=512, power=2.0, f_max=4000.0)
 _to_db = T.AmplitudeToDB(stype='power', top_db=TOP_DB)
 
 image_to_tensor = transforms.Compose([
@@ -97,23 +99,27 @@ def window_quality(w, artifact_fraction=0.0):
     return True, ""
 
 
-def analysis_windows(y):
+def analysis_windows(y, return_starts=False):
     """Denoise the whole recording, then window it.
 
-    Returns (usable_clean_windows, rejected_reason_counts, total_windows, noise_report).
+    Returns (usable_clean_windows, rejected_reason_counts, total_windows, noise_report), plus
+    the start time in seconds of each usable window when return_starts is True.
     Quality is judged on the raw signal; the model sees the denoised one.
     """
     clean, artifact_mask, report = denoise(y)
     raw_windows = split_windows(y)
     clean_windows = split_windows(clean)
     mask_windows = split_windows(artifact_mask.astype(np.float32))
-    usable, rejected = [], {}
-    for raw_w, clean_w, mask_w in zip(raw_windows, clean_windows, mask_windows):
+    usable, starts, rejected = [], [], {}
+    for i, (raw_w, clean_w, mask_w) in enumerate(zip(raw_windows, clean_windows, mask_windows)):
         ok, reason = window_quality(raw_w, float(mask_w.mean()))
         if ok:
             usable.append(clean_w)
+            starts.append(i * WINDOW_SECONDS)
         else:
             rejected[reason] = rejected.get(reason, 0) + 1
+    if return_starts:
+        return usable, rejected, len(raw_windows), report, starts
     return usable, rejected, len(raw_windows), report
 
 
