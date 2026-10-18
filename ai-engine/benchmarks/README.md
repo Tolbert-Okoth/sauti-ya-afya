@@ -35,3 +35,23 @@ interpret leftover noise or muted gaps.
 sensitivity under noise doubles (0.38 -> 0.76) and hiss no longer turns every patient "Normal". Remaining weak
 spots: loud steady noise and voices, where healthy recordings are often called abnormal (Normal sensitivity
 0.25-0.42).
+
+## Children (SPRSound, Shanghai, ages 1 month - 18 years)
+
+`children_v5model.json`: the current engine (`sauti_mobilenet_v5.pth`, trained without children) on 574 held-out
+SPRSound recordings from 87 children: macro-recall **0.37** (Pneumonia 0.22, Asthma 0.02, Normal 0.88), 11% rejected.
+The adult-trained model does not transfer to children.
+
+Retraining with SPRSound using the child's DIAGNOSIS as the label for every recording (experiment "v6", not kept)
+also stayed at chance on children (validation macro-recall 0.37). Reason, from SPRSound's own per-recording
+annotations by paediatricians:
+
+| Child's diagnosis | Recordings that sound Normal | with crackles (DAS) | with wheeze (CAS) |
+|---|---|---|---|
+| Pneumonia | 70% | 18% | 11% |
+| Asthma | 80% | 3% | 15% |
+| Healthy controls | 87% | 1% | 6% |
+
+Most recordings of a sick child sound normal at that chest position, so a per-recording diagnosis label is mostly
+noise. The model has to learn what is audible (normal / wheeze / crackles) and the diagnosis must be made per
+CHILD, combining several chest positions with symptoms and breathing rate.

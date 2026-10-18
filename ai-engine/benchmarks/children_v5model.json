@@ -1,0 +1,14 @@
+{
+  "model": "sauti_mobilenet_v5.pth",
+  "pipeline_version": 3,
+  "test_recordings": 574,
+  "clean": {
+    "macro_recall": 0.37,
+    "recall": {
+      "Asthma": 0.016,
+      "Normal": 0.877,
+      "Pneumonia": 0.218
+    },
+    "rejected_share": 0.113
+  }
+}
