@@ -5,7 +5,7 @@ import { auth } from '../firebase';
 import config from '../config'; 
 import { 
   FaSearch, FaFilter, FaUserCircle, FaMapMarkerAlt, FaClock, 
-  FaTimes, FaWhatsapp, FaCheck, FaSpinner, FaExclamationTriangle,
+  FaTimes, FaWhatsapp, FaSpinner,
   FaStethoscope, FaNotesMedical, FaChartBar, FaArchive
 } from 'react-icons/fa';
 
