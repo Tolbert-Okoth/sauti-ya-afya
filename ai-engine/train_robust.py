@@ -30,7 +30,7 @@ CLASS_DIRS = ['asthma_wheeze', 'normal', 'pneumonia']
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']   # index order used by analyzer.py
 AUDIO_EXTS = ('.wav', '.mp3', '.webm', '.m4a', '.flac', '.ogg', '.aac')
 EXCLUSIONS_FILE = 'data_exclusions.txt'
-MODEL_PATH = 'sauti_mobilenet_v3.pth'
+MODEL_PATH = 'sauti_mobilenet_v4.pth'
 METRICS_PATH = 'model_metrics.json'
 
 
@@ -105,7 +105,8 @@ def featurise(recordings):
             y = ap.load_audio(r['path'])
         except ap.AudioDecodeError as e:
             raise SystemExit(f"Failed to decode {r['path']}: {e}")
-        tensors = [ap.window_tensor(w) for w in ap.split_windows(y) if ap.window_quality(w)[0]]
+        usable, _, _, _ = ap.analysis_windows(y)
+        tensors = [ap.window_tensor(w) for w in usable]
         per_recording.append(tensors)
         if (i + 1) % 100 == 0:
             print(f"   featurised {i + 1}/{len(recordings)}")

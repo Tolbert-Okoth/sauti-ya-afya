@@ -15,7 +15,9 @@ import torchaudio.transforms as T
 from PIL import Image
 from torchvision import transforms
 
-PIPELINE_VERSION = 2
+from denoise import denoise
+
+PIPELINE_VERSION = 3   # v3: denoise.py noise reduction before windowing
 
 SAMPLE_RATE = 16000
 WINDOW_SECONDS = 5
@@ -27,6 +29,7 @@ MAX_SECONDS = 30                       # only the first 30 s of a recording is a
 SILENCE_RMS = 0.005      # below this a window is treated as silence
 CLIP_LEVEL = 0.99        # |sample| at or above this counts as clipped
 MAX_CLIPPED_FRACTION = 0.05
+MAX_ARTIFACT_FRACTION = 0.4   # voices/crying/friction share above which a window is dropped
 
 TOP_DB = 80.0
 FFMPEG_TIMEOUT_SECONDS = 60
@@ -82,14 +85,36 @@ def split_windows(y):
     return windows
 
 
-def window_quality(w):
+def window_quality(w, artifact_fraction=0.0):
     """Returns (ok, reason). Checked on the raw signal before any normalisation."""
     rms = float(np.sqrt(np.mean(w ** 2)))
     if rms < SILENCE_RMS:
         return False, "silent"
     if float(np.mean(np.abs(w) >= CLIP_LEVEL)) > MAX_CLIPPED_FRACTION:
         return False, "clipped"
+    if artifact_fraction > MAX_ARTIFACT_FRACTION:
+        return False, "noisy"
     return True, ""
+
+
+def analysis_windows(y):
+    """Denoise the whole recording, then window it.
+
+    Returns (usable_clean_windows, rejected_reason_counts, total_windows, noise_report).
+    Quality is judged on the raw signal; the model sees the denoised one.
+    """
+    clean, artifact_mask, report = denoise(y)
+    raw_windows = split_windows(y)
+    clean_windows = split_windows(clean)
+    mask_windows = split_windows(artifact_mask.astype(np.float32))
+    usable, rejected = [], {}
+    for raw_w, clean_w, mask_w in zip(raw_windows, clean_windows, mask_windows):
+        ok, reason = window_quality(raw_w, float(mask_w.mean()))
+        if ok:
+            usable.append(clean_w)
+        else:
+            rejected[reason] = rejected.get(reason, 0) + 1
+    return usable, rejected, len(raw_windows), report
 
 
 def bandpass(waveform):

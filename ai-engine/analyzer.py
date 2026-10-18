@@ -17,7 +17,7 @@ import audio_pipeline as ap
 torch.set_num_threads(1)
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          os.environ.get("MODEL_FILE", "sauti_mobilenet_v3.pth"))
+                          os.environ.get("MODEL_FILE", "sauti_mobilenet_v4.pth"))
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
 DEFAULT_THRESHOLD = 0.75
 MIN_THRESHOLD, MAX_THRESHOLD = 0.5, 0.99
@@ -163,21 +163,19 @@ def decide(probs, threshold):
 def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOLD):
     threshold = clamp_threshold(sensitivity_threshold)
     y = ap.load_audio(file_path)
-    windows = ap.split_windows(y)
-    if not windows:
+    usable, rejected, n_windows, noise_report = ap.analysis_windows(y)
+    rejected = Counter(rejected)
+    if n_windows == 0:
         raise RecordingUnusable("Recording is too short. Please record at least 5 seconds.")
-
-    usable, rejected = [], Counter()
-    for w in windows:
-        ok, reason = ap.window_quality(w)
-        if ok:
-            usable.append(w)
-        else:
-            rejected[reason] += 1
     if not usable:
-        reason = "too quiet - hold the phone against the chest" if rejected["silent"] >= rejected["clipped"] \
-            else "distorted (too loud) - move the phone slightly away"
-        raise RecordingUnusable(f"Recording is {reason} and record again.")
+        worst = rejected.most_common(1)[0][0]
+        message = {
+            "silent": "too quiet - hold the phone firmly against the chest",
+            "clipped": "distorted (too loud) - move the phone slightly away",
+            "noisy": "covered by background noise (voices, crying or phone movement) - "
+                     "find a quieter spot and keep the phone still",
+        }[worst]
+        raise RecordingUnusable(f"Recording is {message} and record again.")
 
     batch = torch.stack([ap.window_tensor(w) for w in usable])
     window_probs = torch.softmax(model(batch), dim=1)
@@ -196,7 +194,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOL
         risk = "High"
         notes.append("IMCI danger sign reported: refer urgently regardless of the sound analysis.")
     if rejected:
-        notes.append(f"{sum(rejected.values())} of {len(windows)} segments were unusable ({dict(rejected)}).")
+        notes.append(f"{sum(rejected.values())} of {n_windows} segments were unusable ({dict(rejected)}).")
 
     return {
         "status": "success",
@@ -211,6 +209,7 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOL
             "acoustic_flags": dict(acoustic_flags),
             "symptoms_reported": present,
             "danger_signs": danger,
+            "noise_report": noise_report,
         },
         "visualizer": {"spectrogram_image": ""},
         "preliminary_assessment": f"{diagnosis} Pattern",
