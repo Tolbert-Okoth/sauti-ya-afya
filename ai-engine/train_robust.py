@@ -25,12 +25,13 @@ from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from torchvision import models
 
 import audio_pipeline as ap
+from noise_mix import SYNTHETIC, mix, noise_groups, synthetic_noise
 
 CLASS_DIRS = ['asthma_wheeze', 'normal', 'pneumonia']
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']   # index order used by analyzer.py
 AUDIO_EXTS = ('.wav', '.mp3', '.webm', '.m4a', '.flac', '.ogg', '.aac')
 EXCLUSIONS_FILE = 'data_exclusions.txt'
-MODEL_PATH = 'sauti_mobilenet_v4.pth'
+MODEL_PATH = 'sauti_mobilenet_v5.pth'
 METRICS_PATH = 'model_metrics.json'
 
 
@@ -97,16 +98,32 @@ def split_by_patient(recordings, seed, val_frac=0.15, test_frac=0.15):
     return splits
 
 
-def featurise(recordings):
-    """Decode each recording once and turn every usable 5 s window into a tensor."""
+def featurise(recordings, noise_dir="", noise_copies=0, seed=0):
+    """Decode each recording once and turn every usable 5 s window into a tensor.
+
+    With noise_dir, each recording also gets `noise_copies` versions mixed with a random
+    noise clip (or synthetic hiss / mains hum) at 0-20 dB SNR, run through the same
+    pipeline. Only used for TRAINING recordings; validation and test stay clean.
+    """
+    groups = noise_groups(noise_dir) if noise_dir else {}
+    choices = list(groups) + list(SYNTHETIC)
+    rng = np.random.default_rng(seed)
     per_recording = []
     for i, r in enumerate(recordings):
         try:
             y = ap.load_audio(r['path'])
         except ap.AudioDecodeError as e:
             raise SystemExit(f"Failed to decode {r['path']}: {e}")
-        usable, _, _, _ = ap.analysis_windows(y)
-        tensors = [ap.window_tensor(w) for w in usable]
+        versions = [y]
+        for _ in range(noise_copies if noise_dir else 0):
+            group = choices[rng.integers(len(choices))]
+            noise = (ap.load_audio(groups[group][rng.integers(len(groups[group]))]) if group in groups
+                     else synthetic_noise(group, len(y), rng))
+            versions.append(mix(y, noise, rng.uniform(0, 20), rng))
+        tensors = []
+        for v in versions:
+            usable, _, _, _ = ap.analysis_windows(v)
+            tensors.extend(ap.window_tensor(w) for w in usable)
         per_recording.append(tensors)
         if (i + 1) % 100 == 0:
             print(f"   featurised {i + 1}/{len(recordings)}")
@@ -188,6 +205,9 @@ def main():
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--noise-aug-dir', default='',
+                        help='noise clips (one sub-folder per group) mixed into TRAINING recordings')
+    parser.add_argument('--noise-copies', type=int, default=2, help='noisy copies per training recording')
     args = parser.parse_args()
 
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
@@ -202,7 +222,9 @@ def main():
     assert not ({r['patient'] for r in splits['train']} & {r['patient'] for r in splits['test']}), "patient leak"
 
     print("Featurising (decoding + spectrograms)...")
-    feats = {name: featurise(splits[name]) for name in ('train', 'val', 'test')}
+    feats = {'train': featurise(splits['train'], args.noise_aug_dir, args.noise_copies, args.seed),
+             'val': featurise(splits['val']),
+             'test': featurise(splits['test'])}
     x_train, y_train = windows_dataset(splits['train'], feats['train'])
     print(f"Training windows: {len(y_train)}")
 
@@ -240,6 +262,8 @@ def main():
         'classes': CLASSES,
         'seed': args.seed,
         'best_epoch': best_epoch,
+        'noise_augmentation': {'dir': os.path.basename(os.path.normpath(args.noise_aug_dir)) if args.noise_aug_dir else None,
+                               'copies': args.noise_copies if args.noise_aug_dir else 0, 'snr_db': [0, 20]},
         'note': ("Held-out patients only. Source data (ICBHI 2017, KAUH and assorted clips) is "
                  "predominantly ADULT; these numbers do not establish pediatric performance."),
         'validation': evaluate(model, splits['val'], feats['val'], device),
