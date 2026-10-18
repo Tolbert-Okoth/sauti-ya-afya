@@ -1,5 +1,8 @@
 # ai-engine/gunicorn_config.py
-workers = 1             # Free tier has limited RAM, so we stick to 1 worker
-threads = 2             # Allow concurrent requests
+# Start with: gunicorn -c gunicorn_config.py main:app
+import os
+
+worker_class = "uvicorn.workers.UvicornWorker"  # FastAPI is ASGI; the default sync worker cannot serve it
+workers = 1             # Must stay 1: the job store lives in memory (and free tier RAM is limited)
 timeout = 120           # Give the AI 2 minutes to think before timing out
-bind = "0.0.0.0:10000"  # Render expects port 10000 by default
+bind = f"0.0.0.0:{os.environ.get('PORT', '10000')}"  # Render sets PORT

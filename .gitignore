@@ -56,3 +56,7 @@ eggs/
 .env
 .env.*
 server/config/serviceAccountKey.json
+
+# --- AI engine runtime ---
+/ai-engine/temp_uploads/
+.pytest_cache/

@@ -1,508 +1,221 @@
 import os
-import re 
 
-# 🚀 FORCE SINGLE THREADING
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
+# 🚀 FORCE SINGLE THREADING (Render free tier)
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
-import warnings
-warnings.filterwarnings("ignore")
+import re
+from collections import Counter
 
 import numpy as np
 import torch
-import torchaudio 
-import torchaudio.transforms as T
-import torchaudio.functional as F_audio 
-from torchvision import transforms, models
-from PIL import Image
-import torch.nn.functional as F
-import gc 
-import subprocess 
-import time
-import random
+from torchvision import models
 
-# 🛡️ SAFE IMPORT FOR SCIPY
-try:
-    from scipy.stats import kurtosis, entropy
-    SCIPY_AVAILABLE = True
-except ImportError:
-    print("⚠️ Scipy not found. Fallback to basic math.")
-    SCIPY_AVAILABLE = False
+import audio_pipeline as ap
 
-# 🛑 LIMIT TORCH THREADS
-torch.set_num_threads(1) 
+torch.set_num_threads(1)
 
-print("🔄 Loading Lite Medical Brain...")
-device = torch.device("cpu")
-model = models.mobilenet_v2(weights=None) 
-
-# 🛠️ CLASS ORDER
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          os.environ.get("MODEL_FILE", "sauti_mobilenet_v3.pth"))
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
-SEVERITY_SCORE = {'Pneumonia': 3, 'Asthma': 2, 'Normal': 1, 'Unknown': 0}
+DEFAULT_THRESHOLD = 0.75
+MIN_THRESHOLD, MAX_THRESHOLD = 0.5, 0.99
+DISCLAIMER = "AI Analysis Only. Consult a Doctor."
 
-# 🏥 HYBRID SYMPTOM WEIGHTS
-SYMPTOM_RISK_BONUS = {
-    'fever': 0.10, 'pain': 0.15, 'breath': 0.15, 
-    'cough': 0.05, 'whistle': 0.20, 'tight': 0.15,
-    'wheeze': 0.25, 'crackle': 0.20  
-}
 
-CRACKLE_WEIGHT = 0.6
+class RecordingUnusable(Exception):
+    """The recording cannot be analysed; the health worker should record again."""
 
-model.classifier = torch.nn.Sequential(
-    torch.nn.Dropout(0.2),
-    torch.nn.Linear(model.last_channel, 3)
-)
 
-MODEL_PATH = 'sauti_mobilenet_v2_robust.pth'
-ai_available = False
+# ---------------------------------------------------------------------------
+# 🧠 MODEL (fails loudly: a missing or mismatched model must never look like "Low risk")
+# ---------------------------------------------------------------------------
+def _load_model(path):
+    if not os.path.exists(path):
+        raise RuntimeError(f"Model file not found: {path}")
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    if checkpoint.get("pipeline_version") != ap.PIPELINE_VERSION:
+        raise RuntimeError(
+            f"Model was trained with pipeline v{checkpoint.get('pipeline_version')}, "
+            f"engine uses v{ap.PIPELINE_VERSION}. Retrain with train_robust.py.")
+    if checkpoint.get("classes") != CLASSES:
+        raise RuntimeError(f"Model classes {checkpoint.get('classes')} != {CLASSES}")
+    net = models.mobilenet_v2(weights=None)
+    net.classifier = torch.nn.Sequential(torch.nn.Dropout(0.2), torch.nn.Linear(net.last_channel, len(CLASSES)))
+    net.load_state_dict(checkpoint["state_dict"])
+    net.eval()
+    return net, checkpoint.get("metrics", {})
 
-try:
-    if os.path.exists(MODEL_PATH):
-        state_dict = torch.load(MODEL_PATH, map_location=device)
-        model.load_state_dict(state_dict)
-        model.eval()
-        model = torch.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
-        ai_available = True
-        print("✅ Filtered AI Model Loaded")
-    else:
-        print(f"❌ Model not found at {MODEL_PATH}")
-except Exception as e:
-    print(f"⚠️ AI Load Error: {e}")
 
-preprocess_ai = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
+print("🔄 Loading Medical Brain...")
+model, MODEL_METRICS = _load_model(MODEL_PATH)
+print(f"✅ Model loaded: {os.path.basename(MODEL_PATH)} (pipeline v{ap.PIPELINE_VERSION})")
 
-def calculate_rms(chunk):
-    return np.sqrt(np.mean(chunk**2))
 
-def apply_bandpass_filter(waveform, sr=16000):
-    try:
-        filtered = F_audio.highpass_biquad(waveform, sr, cutoff_freq=100.0)
-        filtered = F_audio.lowpass_biquad(filtered, sr, cutoff_freq=2000.0)
-        return filtered
-    except:
-        return waveform
-
-def count_transients_tkeo(y_chunk):
-    """
-    Teager-Kaiser Energy Operator (TKEO) Detector.
-    detects 'Explosive' energy bursts while suppressing smooth background noise.
-    """
-    try:
-        if np.max(np.abs(y_chunk)) < 0.02: return 0
-
-        y_sq = y_chunk[1:-1] ** 2
-        y_cross = y_chunk[:-2] * y_chunk[2:]
-        tkeo_energy = y_sq - y_cross
-        tkeo_abs = np.abs(tkeo_energy)
-
-        # 🛡️ HEAVY BREATH FILTER (8.0x)
-        avg_energy = np.mean(tkeo_abs)
-        thresh = max(avg_energy * 8.0, 0.0005) 
-        
-        block_size = 320 
-        n_blocks = len(tkeo_abs) // block_size
-        count = 0
-        
-        for i in range(n_blocks):
-            if np.max(tkeo_abs[i*block_size : (i+1)*block_size]) > thresh:
-                count += 1
-        
-        # 6. Artifact Guard (Machine Gun fire)
-        if count > 35: return 0 
-        return count
-    except:
+# ---------------------------------------------------------------------------
+# 🔬 DSP HEURISTICS — informational flags only, they never change probabilities.
+# Thresholds are unvalidated and are kept for clinician context.
+# ---------------------------------------------------------------------------
+def count_transients_tkeo(y, block_size=320):
+    """Teager-Kaiser energy bursts (crackle-like explosive events)."""
+    if np.max(np.abs(y)) < 1e-6:
         return 0
+    tkeo = np.abs(y[1:-1] ** 2 - y[:-2] * y[2:])
+    thresh = np.mean(tkeo) * 8.0
+    n_blocks = len(tkeo) // block_size
+    blocks = tkeo[:n_blocks * block_size].reshape(n_blocks, block_size).max(axis=1)
+    return int(np.sum(blocks > thresh))
 
-def calculate_spectral_flux(y_chunk, sr=16000):
+
+def dsp_features(w):
+    """Computed on a peak-normalised copy so results don't depend on volume."""
+    y = w / (np.max(np.abs(w)) + 1e-9)
+    spectrum = np.abs(np.fft.rfft(y)) + 1e-10
+    freqs = np.fft.rfftfreq(len(y), 1 / ap.SAMPLE_RATE)
+    centroid = float(np.sum(freqs * spectrum) / np.sum(spectrum))
+    bandwidth = float(np.sqrt(np.sum(((freqs - centroid) ** 2) * spectrum) / np.sum(spectrum)))
+    flatness = float(np.exp(np.mean(np.log(spectrum))) / np.mean(spectrum))
+    zcr = float(np.count_nonzero(np.diff(y > 0)) / len(y))
+    return {"zcr": zcr, "centroid": centroid, "bandwidth": bandwidth,
+            "flatness": flatness, "transients": count_transients_tkeo(y)}
+
+
+def dsp_flags(f):
+    flags = []
+    if 600 < f["centroid"] < 2500 and f["bandwidth"] < 1000 and f["flatness"] < 0.25 and f["transients"] < 2:
+        flags.append("wheeze_like")
+    if f["transients"] >= 5 and f["flatness"] < 0.42 and f["zcr"] <= 0.18:
+        flags.append("crackle_like")
+    return flags
+
+
+# ---------------------------------------------------------------------------
+# 🏥 SYMPTOMS — English + Kiswahili, negation-aware. Symptoms never change the
+# acoustic probabilities; WHO/IMCI danger signs escalate the risk level.
+# ---------------------------------------------------------------------------
+SYMPTOM_PATTERNS = {
+    "fever": r"fever|feverish|febrile|hot body|homa",
+    "cough": r"cough\w*|kikohozi|kukohoa|anakohoa",
+    "difficulty_breathing": r"short(ness)? of breath|breathless\w*|(difficult\w*|trouble|hard|fast|rapid|labou?red) (in )?breathing|"
+                            r"kupumua kwa shida|shida ya kupumua|kupumua haraka|anapumua (kwa )?shida",
+    "wheeze": r"wheez\w*|whistl\w*|mluzi|miluzi",
+    "chest_pain": r"chest pain|pain in (the )?chest|maumivu ya kifua",
+    "chest_tightness": r"tight\w*( chest)?|kifua kubana|kubana kifua",
+    "crackles": r"crackl\w*",
+}
+DANGER_SIGN_PATTERNS = {
+    "unable_to_drink_or_breastfeed": r"(unable|can'?t|cannot|not able) to (drink|feed|breastfeed)|hawezi kunywa|hawezi kunyonya",
+    "vomits_everything": r"vomit\w* everything|anatapika kila kitu",
+    "convulsions": r"convuls\w*|seizure\w*|fits?\b|degedege",
+    "lethargic_or_unconscious": r"letharg\w*|unconscious|not (waking|responsive)|amelegea|hana fahamu",
+    "chest_indrawing": r"(chest|lower chest|subcostal) (wall )?in-?drawing|indrawing|retraction\w*",
+    "stridor": r"stridor",
+    "cyanosis": r"cyanos\w*|blue (lips|skin|tongue)|midomo ya bluu",
+}
+NEGATION = re.compile(r"\b(no|not|without|denies|denied|absent|negative for|hakuna|hana|bila|si)\b")
+
+
+def parse_symptoms(text):
+    """Returns (present_symptoms, danger_signs). Clauses with a negation word are ignored."""
+    present, danger = [], []
+    if not text:
+        return present, danger
+    for clause in re.split(r"[,;.\n]|\bbut\b|\blakini\b", text.lower()):
+        if NEGATION.search(clause) and not re.search(r"\b(not able|can'?t|cannot|hawezi|hana fahamu)\b", clause):
+            continue
+        for name, pattern in SYMPTOM_PATTERNS.items():
+            if name not in present and re.search(r"\b(" + pattern + r")", clause):
+                present.append(name)
+        for name, pattern in DANGER_SIGN_PATTERNS.items():
+            if name not in danger and re.search(r"\b(" + pattern + r")", clause):
+                danger.append(name)
+    return present, danger
+
+
+# ---------------------------------------------------------------------------
+# 🩺 ANALYSIS
+# ---------------------------------------------------------------------------
+def clamp_threshold(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_THRESHOLD
+    if not np.isfinite(value):
+        return DEFAULT_THRESHOLD
+    return min(MAX_THRESHOLD, max(MIN_THRESHOLD, value))
+
+
+def decide(probs, threshold):
+    """Diagnosis + risk from the model's averaged probabilities.
+
+    Not confident enough (top probability below the admin threshold) never
+    returns Low risk: it becomes "Suspected X" or "Inconclusive" (Medium).
     """
-    Calculates the rate of change of the power spectrum (Simulates Deltas).
-    High Flux = Chaotic Change (Pneumonia/Crackles)
-    Low Flux = Steady State (Asthma/Normal)
-    """
-    try:
-        n_fft = 512
-        hop_length = 256
-        window = np.hanning(n_fft)
-        
-        n_frames = (len(y_chunk) - n_fft) // hop_length
-        if n_frames < 2: return 0.0
-        
-        flux_sum = 0.0
-        prev_spectrum = None
-        
-        for i in range(n_frames):
-            start = i * hop_length
-            frame = y_chunk[start : start + n_fft] * window
-            spectrum = np.abs(np.fft.rfft(frame))
-            spectrum = spectrum / (np.linalg.norm(spectrum) + 1e-9)
-            
-            if prev_spectrum is not None:
-                flux = np.linalg.norm(spectrum - prev_spectrum)
-                flux_sum += flux
-            prev_spectrum = spectrum
-            
-        return flux_sum / n_frames
-    except:
-        return 0.0
+    top = max(probs, key=probs.get)
+    confident = probs[top] >= threshold
+    if top == "Normal":
+        return ("Normal", "Low") if confident else ("Inconclusive", "Medium")
+    return (top, "High") if confident else (f"Suspected {top}", "Medium")
 
-def extract_physics_features_lite(y_chunk, sr=16000):
-    try:
-        zero_crossings = np.nonzero(np.diff(y_chunk > 0))[0]
-        zcr = len(zero_crossings) / len(y_chunk)
-        
-        # FFT for Spectrum
-        spectrum = np.abs(np.fft.rfft(y_chunk)) + 1e-10
-        freqs = np.fft.rfftfreq(len(y_chunk), 1/sr)
-        
-        # ✨ Spectral Centroid
-        spectral_centroid = np.sum(freqs * spectrum) / np.sum(spectrum)
 
-        # ✨ Spectral Bandwidth
-        spectral_bandwidth = np.sqrt(np.sum(((freqs - spectral_centroid) ** 2) * spectrum) / np.sum(spectrum))
-        
-        # ✨ Crest Factor
-        rms = np.sqrt(np.mean(y_chunk**2))
-        peak = np.max(np.abs(y_chunk))
-        crest_factor = peak / (rms + 1e-9)
-        
-        # ✨ Spectral Flux
-        spectral_flux = calculate_spectral_flux(y_chunk, sr)
+@torch.no_grad()
+def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOLD):
+    threshold = clamp_threshold(sensitivity_threshold)
+    y = ap.load_audio(file_path)
+    windows = ap.split_windows(y)
+    if not windows:
+        raise RecordingUnusable("Recording is too short. Please record at least 5 seconds.")
 
-        log_spectrum = np.log(spectrum)
-        geom_mean = np.exp(np.mean(log_spectrum))
-        arith_mean = np.mean(spectrum)
-        spectral_flatness = geom_mean / arith_mean
-        
-        # Harmonic Ratio (Approximate as 1 - Flatness)
-        # High Ratio (>0.7) = Tonal (Asthma)
-        # Low Ratio (<0.5) = Noise (Normal/Pneumonia)
-        harmonic_ratio = 1.0 - spectral_flatness
-        
-        if SCIPY_AVAILABLE:
-            kurt = kurtosis(y_chunk)
-            ent = entropy(np.abs(y_chunk) + 1e-10)
+    usable, rejected = [], Counter()
+    for w in windows:
+        ok, reason = ap.window_quality(w)
+        if ok:
+            usable.append(w)
         else:
-            kurt = 0.0; ent = 0.0
-        
-        mad = np.mean(np.abs(y_chunk - np.mean(y_chunk)))
-        transients = count_transients_tkeo(y_chunk)
-        
-        return zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients, spectral_centroid, spectral_bandwidth, crest_factor, spectral_flux
-    except:
-        return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0.0, 0.0, 0.0, 0.0
+            rejected[reason] += 1
+    if not usable:
+        reason = "too quiet - hold the phone against the chest" if rejected["silent"] >= rejected["clipped"] \
+            else "distorted (too loud) - move the phone slightly away"
+        raise RecordingUnusable(f"Recording is {reason} and record again.")
 
-def generate_spectrogram(y_chunk, sr=16000):
-    try:
-        waveform = torch.from_numpy(y_chunk).unsqueeze(0)
-        waveform = (waveform - waveform.min()) / (waveform.max() - waveform.min() + 1e-8)
-        waveform[torch.abs(waveform) < 0.01] = 0 
-        waveform = apply_bandpass_filter(waveform, sr)
-        mel_transform = T.MelSpectrogram(sample_rate=sr, n_mels=128, n_fft=2048, hop_length=512, power=2.0)
-        spectrogram = mel_transform(waveform)
-        spectrogram_db = T.AmplitudeToDB(stype='power', top_db=80)(spectrogram)
-        s_norm = (spectrogram_db + 80) / 80.0  
-        s_norm = torch.clamp(s_norm, 0, 1)     
-        s_norm = s_norm.byte().squeeze(0).numpy() * 255 
-        s_norm = np.flipud(s_norm)
-        return Image.fromarray(s_norm.astype(np.uint8)).convert('RGB')
-    except:
-        return None
+    batch = torch.stack([ap.window_tensor(w) for w in usable])
+    window_probs = torch.softmax(model(batch), dim=1)
+    mean_probs = window_probs.mean(dim=0)
+    probs = {c: float(p) for c, p in zip(CLASSES, mean_probs)}
 
-def predict_with_tta(model, input_tensor):
-    t1 = input_tensor
-    t2 = input_tensor.clone(); f = random.randint(0, 100); t2[:,:,f:f+10,:] = 0
-    t3 = input_tensor.clone(); t = random.randint(0, 100); t3[:,:,:,t:t+10] = 0
-    batch = torch.cat([t1, t2, t3], dim=0)
-    with torch.no_grad():
-        outputs = model(batch)
-        probs = F.softmax(outputs, dim=1)
-        avg_probs = torch.mean(probs, dim=0)
-    return avg_probs
+    diagnosis, risk = decide(probs, threshold)
 
-def analyze_audio(file_path, symptoms="", sensitivity_threshold=0.75):
-    try:
-        print(f"--- [START] Analysis Job (Vesicular Shield 2.0) ---")
-        
-        command = ['ffmpeg', '-y', '-i', file_path, '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-t', '30', '-threads', '1', '-preset', 'ultrafast', '-loglevel', 'error', '-']
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, err = process.communicate()
-        if process.returncode != 0: raise Exception(f"FFmpeg Error: {err.decode()}")
+    acoustic_flags = Counter()
+    for w in usable:
+        acoustic_flags.update(dsp_flags(dsp_features(w)))
 
-        y_full = np.frombuffer(out, dtype=np.int16).astype(np.float32) / 32768.0
-        chunks = []
-        for i in range(0, len(y_full), 80000):
-            chunk = y_full[i : i + 80000]
-            if len(chunk) > 16000: chunks.append(chunk)
+    present, danger = parse_symptoms(symptoms)
+    notes = []
+    if danger:
+        risk = "High"
+        notes.append("IMCI danger sign reported: refer urgently regardless of the sound analysis.")
+    if rejected:
+        notes.append(f"{sum(rejected.values())} of {len(windows)} segments were unusable ({dict(rejected)}).")
 
-        final_diagnosis = "Inconclusive"
-        highest_severity = -1
-        valid_chunks = 0
-        probs_list = [] 
-        averaged_probs = {"Asthma": 0.0, "Normal": 0.0, "Pneumonia": 0.0}
-        
-        physics_override = False
-        total_transients = 0
-        pneumonia_chunks_detected = 0 
-        asthma_chunks_detected = 0
-        detected_wheezes = 0
+    return {
+        "status": "success",
+        "biomarkers": {
+            "ai_diagnosis": diagnosis,
+            "prob_pneumonia": round(probs["Pneumonia"], 3),
+            "prob_asthma": round(probs["Asthma"], 3),
+            "prob_normal": round(probs["Normal"], 3),
+            "threshold_used": threshold,
+            "segments_analyzed": len(usable),
+            "segments_rejected": sum(rejected.values()),
+            "acoustic_flags": dict(acoustic_flags),
+            "symptoms_reported": present,
+            "danger_signs": danger,
+        },
+        "visualizer": {"spectrogram_image": ""},
+        "preliminary_assessment": f"{diagnosis} Pattern",
+        "risk_level_output": risk,
+        "notes": notes,
+        "disclaimer": DISCLAIMER,
+    }
 
-        for idx, chunk in enumerate(chunks):
-            # 🛡️ SAFETY INIT (Prevents UnboundLocalError)
-            chunk_severity = 1 
-            
-            rms = calculate_rms(chunk)
-            if rms < 0.005: continue 
-
-            img = generate_spectrogram(chunk)
-            if ai_available and img:
-                input_tensor = preprocess_ai(img).unsqueeze(0)
-                probs = predict_with_tta(model, input_tensor)
-                probs_list.append(probs) 
-                
-                zcr, harmonic_ratio, spectral_flatness, kurt, ent, mad, transients, centroid, bandwidth, crest_factor, flux = extract_physics_features_lite(chunk)
-                
-                winner_idx = torch.argmax(probs).item()
-                chunk_diagnosis = CLASSES[winner_idx]
-                winner_prob = float(probs[winner_idx])
-
-                if chunk_diagnosis == "Normal" and winner_prob > 0.85:
-                    pneumonia_pop_threshold = 8 
-                else:
-                    pneumonia_pop_threshold = 5 
-
-                force_pneumonia = False
-                force_asthma = False 
-                
-                # Guards
-                is_friction_noise = (zcr > 0.18) 
-                not_too_flat = (spectral_flatness < 0.42)
-                
-                # Crackle Definitions
-                is_coarse_crackle = (0.10 < zcr <= 0.15) and (centroid > 1000) and (crest_factor > 12)
-                is_fine_crackle = (zcr > 0.15) 
-
-                # ✨ ASTHMA DEFINITION (STRICT)
-                # Must be Tonal (High Harmonic Ratio / Low Flatness) and Steady (Low Flux)
-                is_wheeze = (600 < centroid < 2500) and (bandwidth < 1000) and (spectral_flatness < 0.25) and (zcr > 0.08) and (transients < 2) and (flux < 0.5)
-
-                # ✨ VESICULAR SHIELD 2.0 (STRICT NORMAL)
-                # RMS < 0.04 (User Data: 0.03 + safety margin)
-                # ZCR < 0.08 (User Data: Very smooth)
-                # Harmonic Ratio < 0.5 (Non-musical, just air noise)
-                is_vesicular = (zcr < 0.08) and (centroid < 650) and (rms < 0.04) and (transients == 0) and (harmonic_ratio < 0.5) and not is_wheeze
-                
-                # ✨ STABILITY CHECK (Silence/Calm)
-                is_stable_normal = (rms < 0.03) and (transients == 0) and (not is_friction_noise)
-                
-                # ✨ GOLDEN ZONE (General Healthy)
-                is_golden_normal = (0.05 < zcr < 0.15) and (0.30 < spectral_flatness < 0.60) and (transients < 4) and not is_wheeze
-
-                if is_vesicular:
-                     print(f"   ✨ VESICULAR SHIELD: Perfect Healthy Lung Pattern (ZCR={zcr:.2f}, RMS={rms:.3f}). Forcing Normal.")
-                     chunk_diagnosis = "Normal"
-                     chunk_severity = 1
-                     probs_list[-1] = torch.tensor([0.01, 0.98, 0.01]) 
-
-                elif is_stable_normal:
-                     print(f"   ✨ STABILITY CHECK: Non-impulsive (RMS={rms:.3f}). Forcing Normal.")
-                     chunk_diagnosis = "Normal"
-                     chunk_severity = 1
-                     probs_list[-1] = torch.tensor([0.02, 0.96, 0.02]) 
-
-                elif is_wheeze and not is_friction_noise:
-                     print(f"   🌬️ WHEEZE DETECTED: Tonal Sound (Flux={flux:.2f}, Flatness={spectral_flatness:.2f}). Forcing Asthma.")
-                     force_asthma = True
-                     detected_wheezes += 1
-
-                elif is_golden_normal and not is_coarse_crackle:
-                     print(f"   ✨ GOLDEN ZONE: Physics matches Healthy Breath. Forcing Normal.")
-                     chunk_diagnosis = "Normal"
-                     chunk_severity = 1
-                     probs_list[-1] = torch.tensor([0.05, 0.90, 0.05]) 
-                     total_transients += transients
-                     
-                elif is_friction_noise:
-                     print(f"   ⚠️ ARTIFACT: Extreme Friction (ZCR={zcr:.2f}). Ignoring Pops.")
-
-                else:
-                    total_transients += transients
-
-                    if transients >= pneumonia_pop_threshold and not_too_flat:
-                        if is_fine_crackle:
-                             print(f"   ⚠️ HIERARCHY: Fine Crackles ({transients} bursts) -> Forcing Pneumonia.")
-                             force_pneumonia = True
-                        elif is_coarse_crackle:
-                             print(f"   ⚠️ HIERARCHY: Coarse Crackles ({transients} bursts, Flux={flux:.2f}) -> Forcing Pneumonia.")
-                             force_pneumonia = True
-                    
-                    elif transients >= 4 and not_too_flat:
-                         if is_fine_crackle or is_coarse_crackle:
-                             print(f"   ⚠️ HIERARCHY: Moderate Crackles ({transients} bursts) -> Forcing Pneumonia.")
-                             force_pneumonia = True
-
-                if force_pneumonia:
-                    chunk_diagnosis = "Pneumonia"
-                    chunk_severity = 3
-                    winner_prob = 0.90 
-                    probs_list[-1] = torch.tensor([0.05, 0.05, 0.90]) 
-                    physics_override = True
-                    pneumonia_chunks_detected += 1
-                
-                elif force_asthma:
-                    chunk_diagnosis = "Asthma"
-                    chunk_severity = 2
-                    winner_prob = 0.85
-                    probs_list[-1] = torch.tensor([0.85, 0.05, 0.10])
-                    physics_override = True
-                    asthma_chunks_detected += 1
-
-                else:
-                    if chunk_diagnosis == "Asthma":
-                        if is_wheeze: 
-                             asthma_chunks_detected += 1
-                             chunk_severity = 2 
-                        
-                        elif (transients > 4 or crest_factor > 15 or flux > 1.5) and centroid > 800 and not is_friction_noise:
-                             print(f"   🛡️ VETO: AI=Asthma, but Sound is Chaotic (Flux={flux:.2f}, Crest={crest_factor:.1f}). Overriding to Pneumonia.")
-                             chunk_diagnosis = "Pneumonia"
-                             chunk_severity = 3
-                             winner_prob = 0.85 
-                             probs_list[-1] = torch.tensor([0.10, 0.05, 0.85]) 
-                             physics_override = True
-                             pneumonia_chunks_detected += 1
-
-                        elif spectral_flatness > 0.35:
-                             print(f"   ℹ️ INFO: AI=Asthma, but Sound is Flat. Likely Normal Breath.")
-                             chunk_diagnosis = "Normal"
-                             chunk_severity = 1
-                             winner_prob = 0.60
-                             probs_list[-1] = torch.tensor([0.20, 0.60, 0.20]) 
-                        else:
-                             if chunk_diagnosis != "Normal": chunk_severity = 2 
-                    
-                    elif chunk_diagnosis == "Pneumonia" and winner_prob > 0.60:
-                        if spectral_flatness > 0.42:
-                            print(f"   ℹ️ INFO: AI=Pneumonia, but Sound is Flat. Downgrading to Normal.")
-                            chunk_diagnosis = "Normal"
-                            chunk_severity = 1
-                            probs_list[-1] = torch.tensor([0.10, 0.80, 0.10])
-                        else:
-                            pneumonia_chunks_detected += 1
-
-                    elif chunk_diagnosis == "Normal": chunk_severity = 1
-                    elif winner_prob < 0.60: 
-                        chunk_diagnosis = f"Suspected {chunk_diagnosis}"
-                        chunk_severity = 1.5 
-                    else: chunk_severity = SEVERITY_SCORE.get(chunk_diagnosis, 0)
-
-                print(f"   🔹 Chunk {idx+1}: {chunk_diagnosis} (Conf: {winner_prob:.2f} | Sev: {chunk_severity})")
-                valid_chunks += 1
-
-                if chunk_severity > highest_severity:
-                    highest_severity = chunk_severity
-        
-        if valid_chunks == 0:
-            final_diagnosis = "Inconclusive"
-        else:
-            if probs_list:
-                avg_probs_tensor = torch.mean(torch.stack(probs_list), dim=0)
-                if avg_probs_tensor.dim() > 1: avg_probs_tensor = avg_probs_tensor.squeeze()
-                averaged_probs = {k: float(v) for k, v in zip(CLASSES, avg_probs_tensor)}
-                
-                # HYBRID CONSENSUS
-                p_pneumonia = averaged_probs["Pneumonia"]
-                p_asthma = averaged_probs["Asthma"]
-                
-                if pneumonia_chunks_detected > asthma_chunks_detected:
-                    final_diagnosis = "Pneumonia"
-                    averaged_probs["Pneumonia"] = max(p_pneumonia, 0.80)
-                
-                elif asthma_chunks_detected > pneumonia_chunks_detected:
-                    final_diagnosis = "Asthma"
-                    averaged_probs["Asthma"] = max(p_asthma, 0.80)
-                
-                elif p_asthma > 0.5 or p_pneumonia > 0.5:
-                     if abs(p_asthma - p_pneumonia) < 0.2:
-                         print(f"   ⚖️ TIE BREAKER: Asthma ({p_asthma:.2f}) vs Pneumonia ({p_pneumonia:.2f})")
-                         if detected_wheezes > 0:
-                             print("   -> Wheezes found. Winner: Asthma.")
-                             final_diagnosis = "Asthma"
-                         elif total_transients > 5:
-                             print("   -> Transients found. Winner: Pneumonia.")
-                             final_diagnosis = "Pneumonia"
-                         else:
-                             final_diagnosis = max(averaged_probs, key=averaged_probs.get)
-                     else:
-                         final_diagnosis = max(averaged_probs, key=averaged_probs.get)
-
-                elif physics_override:
-                     if highest_severity == 3: final_diagnosis = "Pneumonia"
-                     elif highest_severity == 2: final_diagnosis = "Asthma"
-                     else: final_diagnosis = "Normal"
-                
-                else:
-                    new_winner = max(averaged_probs, key=averaged_probs.get)
-                    max_prob = averaged_probs[new_winner]
-                    if max_prob < 0.50: final_diagnosis = "Normal" 
-                    else: final_diagnosis = new_winner
-
-            if final_diagnosis == "Inconclusive": final_diagnosis = "Normal"
-            
-            # GLOBAL CHECK
-            avg_harm = np.mean([extract_physics_features_lite(c, 16000)[1] for c in chunks]) if chunks else 0
-            avg_flat = np.mean([extract_physics_features_lite(c, 16000)[2] for c in chunks]) if chunks else 0
-            
-            if total_transients > 12 and avg_harm < 0.65 and avg_flat < 0.42 and final_diagnosis != "Pneumonia":
-                 print(f"   ⚠️ Global TKEO Check: {total_transients} bursts detected. Overriding to Pneumonia.")
-                 final_diagnosis = "Pneumonia"
-                 averaged_probs["Pneumonia"] = 0.85
-
-        if symptoms:
-            matched = []
-            risk_bonus = 0.0
-            for key, bonus in SYMPTOM_RISK_BONUS.items():
-                if re.search(r'\b' + re.escape(key) + r'\b', symptoms.lower()):
-                    risk_bonus += bonus; matched.append(key)
-            
-            if risk_bonus > 0:
-                print(f"   ⚠️ Symptoms Bonus: +{risk_bonus:.2f} (Matched: {matched})")
-                averaged_probs["Pneumonia"] = min(0.99, averaged_probs["Pneumonia"] + risk_bonus)
-                averaged_probs["Asthma"] = min(0.99, averaged_probs["Asthma"] + (risk_bonus * 0.8))
-                
-                new_winner = max(averaged_probs, key=averaged_probs.get)
-                if averaged_probs[new_winner] > 0.60:
-                     highest_severity = max(highest_severity, SEVERITY_SCORE.get(new_winner, 0))
-                
-                if SEVERITY_SCORE.get(new_winner, 0) >= SEVERITY_SCORE.get(final_diagnosis.replace("Suspected ", ""), 0): 
-                    final_diagnosis = new_winner
-
-        risk_label = "Low"
-        if "Suspected" in final_diagnosis: risk_label = "Medium"
-        elif final_diagnosis == "Normal": risk_label = "Low"
-        elif final_diagnosis == "Inconclusive": risk_label = "Low"
-        else: risk_label = "High"
-
-        print(f"--- [SUCCESS] Verdict: {final_diagnosis} (Risk: {risk_label}) ---")
-        return {
-            "status": "success",
-            "biomarkers": {
-                "ai_diagnosis": final_diagnosis,
-                "prob_pneumonia": round(averaged_probs["Pneumonia"], 3),
-                "prob_asthma": round(averaged_probs["Asthma"], 3),
-                "prob_normal": round(averaged_probs["Normal"], 3)
-            },
-            "visualizer": { "spectrogram_image": "" },
-            "preliminary_assessment": f"{final_diagnosis} Pattern",
-            "risk_level_output": risk_label,
-            "disclaimer": "AI Analysis Only. Consult a Doctor."
-        }
-
-    except Exception as e:
-        print(f"❌ ANALYZER ERROR: {e}")
-        return {"status": "error", "message": str(e)}

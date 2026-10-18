@@ -1,0 +1,7 @@
+# Training / data preparation / tests (not needed on the server)
+-r requirements.txt
+kagglehub
+pandas
+scipy
+pytest==9.1.1
+httpx==0.28.1
