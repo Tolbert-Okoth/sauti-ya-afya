@@ -61,3 +61,12 @@ CHILD, combining several chest positions with symptoms and breathing rate.
 `children_v7model.json`: model trained on SPRSound with per-window SOUND labels (crackles / wheeze-type / normal),
 same 129 held-out children (1,219 recordings, none rejected): macro-recall **0.675**, accuracy 0.72;
 sensitivity wheeze-type 0.65, normal 0.75, crackles 0.63; precision 0.53 / 0.90 / 0.39.
+
+### Children under noise (v7)
+
+`noise_children_v7model.json`: 400 random recordings of the 129 held-out children, mixed with the same unseen noise
+clips as above. Macro-recall clean 0.70; mean over the 12 noisy conditions **0.56** (best: white hiss / mains hum
+~0.6-0.64; worst: voices 0.47-0.50, loud impulsive 0.50). Performance degrades but never collapses to one class.
+No recording was rejected, even with loud voices: the voice detector relies on energy above 2.5 kHz, and the
+paediatric stethoscope audio only reaches 4 kHz, so it rarely fires. Real phone audio (to 8 kHz) should trigger it
+more; this needs checking on phone recordings.
