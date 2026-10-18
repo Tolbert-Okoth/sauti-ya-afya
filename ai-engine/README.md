@@ -2,9 +2,18 @@
 
 FastAPI service that classifies a lung-sound recording as **Asthma/wheeze**, **Normal** or **Pneumonia** pattern.
 
-> ⚠️ **Screening aid only.** The model is trained mostly on **adult** recordings (ICBHI 2017, KAUH and a few public clips).
-> Its held-out results (`model_metrics.json`) say nothing about performance in children. Do not use it for clinical decisions
-> until it has been validated on pediatric data from the target setting.
+> ⚠️ **Screening aid only.** The model detects **sounds** (crackles, wheeze-type sounds, normal breathing) in a single
+> recording. It was trained and tested on children (SPRSound, Shanghai, 1 month–18 years) recorded with a stethoscope,
+> not yet on phone recordings from Kenya. A diagnosis needs the whole child: several chest spots, breathing rate,
+> fever and danger signs (WHO/IMCI). Do not use it for clinical decisions until validated in the target setting.
+
+**What the classes mean** (names kept for API compatibility; `biomarkers.sound_finding` says it plainly):
+
+| API class | Sound detected |
+|---|---|
+| `Pneumonia` | crackles (fine or coarse) |
+| `Asthma` | wheeze-type: wheeze, rhonchi, stridor |
+| `Normal` | normal breath sounds |
 
 ## How a recording is analysed
 
@@ -29,6 +38,34 @@ FastAPI service that classifies a lung-sound recording as **Asthma/wheeze**, **N
    - `symptoms_reported` / `danger_signs`: parsed from the symptom text (English + Kiswahili, negation-aware).
      Any WHO/IMCI danger sign sets the risk to **High**.
    - `noise_report`: what the denoiser found (hum frequencies, share of heart-sound, voice and friction frames).
+
+## Per-child analysis (`POST /analyze_child`)
+
+The app records **2–4 chest spots** per child and sends them together, with the breathing rate and signs:
+
+| Form field | Meaning |
+|---|---|
+| `files` | 1–4 recordings (one per chest spot) |
+| `age_months` | age in months (IMCI cut-offs depend on it) |
+| `breaths_per_minute` | counted over a full minute (optional, but needed for the fast-breathing check) |
+| `symptoms` | free text plus ticked IMCI signs (danger signs, chest indrawing, stridor, blue lips) |
+
+Each spot is scored separately (`biomarkers.spots`). Crackle and wheeze scores are combined across spots with
+rules chosen on validation children (`evaluate_children.py`, target ≥80% sensitivity), then `classify_child`
+applies WHO IMCI logic (`imci.py`): general danger sign → refer urgently; under 2 months with fast breathing,
+chest indrawing or crackles → refer urgently; fast breathing / chest indrawing → IMCI pneumonia signs (or, with
+wheeze, a bronchodilator trial and reassessment); crackles alone → clinician review / count breathing; wheeze alone
+→ IMCI wheeze pathway; otherwise Low. The response adds `explanation` (plain text for the health worker).
+
+On the 129 held-out children (`benchmarks/child_level_v7model.json`), up to 4 spots each:
+
+| Finding | Combine rule | Sensitivity | Specificity | Children with finding |
+|---|---|---|---|---|
+| Crackles | mean of the 2 highest spots, ≥ 0.49 | 0.79 | 0.76 | 29 |
+| Wheeze-type | mean of spots, ≥ 0.28 | 0.44 | 0.94 | 16 |
+
+Wheeze detection per child is weak (few children with wheeze in the data); breathing rate and IMCI signs still
+drive the risk level. The single-recording `POST /analyze` endpoint is unchanged.
 
 ## Noise handling
 
@@ -63,7 +100,7 @@ gunicorn -c gunicorn_config.py main:app  # or: python main.py
 | `MAX_UPLOAD_MB` | `10` | Upload size limit. |
 | `JOB_TTL_SECONDS` | `3600` | Finished jobs are forgotten after this. |
 | `MAX_JOBS` | `500` | Jobs held in memory at once. |
-| `MODEL_FILE` | `sauti_mobilenet_v5.pth` | Checkpoint to load. |
+| `MODEL_FILE` | `sauti_mobilenet_v7.pth` | Checkpoint to load. |
 
 Keep **one** worker: the job store is in memory.
 
@@ -84,19 +121,18 @@ python -m pytest -q tests
 - The epoch with the best validation macro-recall is kept; test metrics are reported per class (sensitivity and
   precision) at recording level.
 
-## Current model (`sauti_mobilenet_v5.pth`)
+## Current model (`sauti_mobilenet_v7.pth`)
 
-Pipeline v3 (denoising) + trained with noise augmentation. Held-out test set: 110 recordings from 28 patients never
-seen in training (`model_metrics.json`).
+Pipeline v4, trained only on children: SPRSound recordings labelled per 5 s window from paediatricians' sound
+annotations (`python train_robust.py --labels sound --sprsound-dir ... --noise-aug-dir ...`), with noise augmentation.
+Held-out test: **1,219 recordings from 129 children** never seen in training (`benchmarks/children_v7model.json`).
 
-| | Sensitivity (recall) | Precision |
+| Sound | Sensitivity | Precision |
 |---|---|---|
-| Asthma / wheeze | 0.97 | 0.97 |
-| Normal | 0.83 | 0.77 |
-| Pneumonia | 0.90 | 0.94 |
+| Wheeze-type (`Asthma`) | 0.65 | 0.53 |
+| Normal | 0.75 | 0.90 |
+| Crackles (`Pneumonia`) | 0.63 | 0.39 |
 
-Accuracy 0.91, macro-recall 0.90. Under unseen noise (12 conditions) mean macro-recall is
-0.69 and pneumonia sensitivity 0.76, versus 0.47 and 0.38 for the previous engine (`benchmarks/`).
-With only 28 test patients these numbers carry wide error bars (a few patients can move them by 5–10 points), and
-they are adult data. Weakest conditions: loud steady noise and voices (macro-recall ~0.5), where healthy recordings
-are often called abnormal.
+Macro-recall 0.675 (the previous, adult-trained engine scored 0.37 on these children). Main weakness: false
+crackle alarms (about 6 in 10 crackle calls are normal recordings). Not yet measured: phone recordings, noise
+robustness on children, and per-child accuracy when several chest spots are combined.

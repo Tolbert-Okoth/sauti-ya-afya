@@ -8,6 +8,8 @@ load_dotenv()
 
 import os
 
+import imci
+
 _client = None
 
 
@@ -22,18 +24,8 @@ def _get_client():
 
 def fast_breathing_note(age_months, bpm):
     """WHO/IMCI fast-breathing cut-offs. Returns '' when not fast or not measured."""
-    if bpm is None or age_months is None:
-        return ""
-    if age_months < 2:
-        cutoff = 60
-    elif age_months < 12:
-        cutoff = 50
-    elif age_months < 60:
-        cutoff = 40
-    else:
-        cutoff = 30   # not an IMCI band; general paediatric guide for 5+ years
-    if bpm >= cutoff:
-        return f"FAST BREATHING (≥{cutoff}/min for age) – IMCI pneumonia sign"
+    if imci.is_fast_breathing(age_months, bpm):
+        return f"FAST BREATHING (≥{imci.fast_breathing_cutoff(age_months)}/min for age) – IMCI pneumonia sign"
     return ""
 
 

@@ -10,6 +10,23 @@ import {
   FaServer, FaCircle, FaInfoCircle, FaChartBar, FaStethoscope
 } from 'react-icons/fa';
 
+// Chest spots recorded per child (back of the chest, as in the SPRSound training data)
+const CHEST_SPOTS = ['Left upper back', 'Right upper back', 'Left lower back', 'Right lower back'];
+const RECORD_SECONDS = 15;
+const MIN_RECORD_SECONDS = 5;
+// IMCI signs; the phrases are what the engine's symptom parser recognises
+const IMCI_SIGNS = [
+  { key: 'unable to drink or breastfeed', label: 'Unable to drink / breastfeed' },
+  { key: 'vomits everything', label: 'Vomits everything' },
+  { key: 'convulsions', label: 'Convulsions' },
+  { key: 'lethargic', label: 'Lethargic or unconscious' },
+  { key: 'chest indrawing', label: 'Chest indrawing' },
+  { key: 'stridor', label: 'Stridor in a calm child' },
+  { key: 'blue lips', label: 'Blue lips / tongue' },
+];
+// Browser voice processing (noise suppression, echo cancellation, auto gain) removes breath sounds and crackles
+const RAW_AUDIO = { audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } };
+
 const SmartRecorder = ({ onLogout }) => {
   
   // Recorder State
@@ -23,7 +40,8 @@ const SmartRecorder = ({ onLogout }) => {
   const [serverStatus, setServerStatus] = useState('sleeping');
 
   // Admin Config & Counties
-  const [systemConfig, setSystemConfig] = useState({ confidence_threshold: 0.75 });
+  // Admin config is still loaded; per-child analysis uses the engine's validated thresholds instead of the slider
+  const [, setSystemConfig] = useState({ confidence_threshold: 0.75 });
   const [counties, setCounties] = useState([]); 
 
   // Patient Form State
@@ -34,6 +52,14 @@ const SmartRecorder = ({ onLogout }) => {
     phone: '', 
     symptoms: '' 
   });
+
+  // 👶 Several chest spots per child + IMCI signs
+  const [spotBlobs, setSpotBlobs] = useState(Array(CHEST_SPOTS.length).fill(null));
+  const [activeSpot, setActiveSpot] = useState(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [breathsPerMinute, setBreathsPerMinute] = useState('');
+  const [dangerSigns, setDangerSigns] = useState([]);
+  const stopTimerRef = useRef(null);
 
   const [errors, setErrors] = useState({});
   const mediaRecorderRef = useRef(null);
@@ -131,6 +157,7 @@ const SmartRecorder = ({ onLogout }) => {
 
   const getClinicalExplanation = (result) => {
       if (!result || !result.biomarkers) return "No data available.";
+      if (result.explanation) return result.explanation;
       
       const bio = result.biomarkers;
       const diag = result.preliminary_assessment.replace(' Pattern', '');
@@ -149,10 +176,17 @@ const SmartRecorder = ({ onLogout }) => {
       }
   };
 
-  const startRecording = async () => {
+  const calculateAgeMonths = (dob) => {
+      const birth = new Date(dob);
+      const now = new Date();
+      return Math.max(0, (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth())
+          - (now.getDate() < birth.getDate() ? 1 : 0));
+  };
+
+  const startRecording = async (spotIndex) => {
     if (!validateForm()) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia(RAW_AUDIO);
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
@@ -171,15 +205,33 @@ const SmartRecorder = ({ onLogout }) => {
 
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
+      const startedAt = Date.now();
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
-      mediaRecorderRef.current.onstop = handleStop;
+      mediaRecorderRef.current.onstop = () => {
+        audioContext.close();
+        if ((Date.now() - startedAt) / 1000 < MIN_RECORD_SECONDS) {
+          alert(`Recording too short. Keep the phone still on the chest for at least ${MIN_RECORD_SECONDS} seconds.`);
+          return;
+        }
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setSpotBlobs(prev => prev.map((b, i) => (i === spotIndex ? blob : b)));
+      };
       mediaRecorderRef.current.start();
       setIsRecording(true);
+      setActiveSpot(spotIndex);
       setAnalysis(null);
       setSaveStatus('');
       updateVolume();
+
+      setSecondsLeft(RECORD_SECONDS);
+      stopTimerRef.current = setInterval(() => {
+        setSecondsLeft(prev => {
+          if (prev <= 1) { stopRecording(); return 0; }
+          return prev - 1;
+        });
+      }, 1000);
     } catch (err) {
       console.error(err);
       alert("Microphone access denied. Please allow permissions.");
@@ -187,32 +239,54 @@ const SmartRecorder = ({ onLogout }) => {
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current) {
+    clearInterval(stopTimerRef.current);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
     }
     setIsRecording(false);
+    setActiveSpot(null);
     setVolume(0);
     cancelAnimationFrame(animationRef.current);
   };
 
-  const handleStop = async () => {
+  useEffect(() => () => clearInterval(stopTimerRef.current), []);
+
+  const toggleDangerSign = (key) => {
+    setDangerSigns(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]));
+  };
+
+  const recordedSpots = spotBlobs.filter(Boolean).length;
+
+  const analyseChild = async () => {
+    if (!validateForm()) return;
+    if (recordedSpots === 0) { alert("Record at least one chest spot first."); return; }
+    if (recordedSpots < 2 && !window.confirm("Only one spot recorded. At least 2 spots give a more reliable result. Analyse anyway?")) return;
+    const bpm = breathsPerMinute === '' ? null : Number(breathsPerMinute);
+    if (bpm !== null && (!Number.isFinite(bpm) || bpm < 5 || bpm > 150)) {
+      alert("Breaths per minute should be between 5 and 150 (count for a full 60 seconds)."); return;
+    }
+
     setLoading(true);
-    const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+    setAnalysis(null);
+    setSaveStatus('');
     const calculatedAge = calculateAge(patientData.dob);
+    // Typed symptoms + ticked IMCI signs, in phrases the engine's parser understands
+    const fullSymptoms = [patientData.symptoms, ...dangerSigns].filter(Boolean).join(', ');
 
     try {
       const pythonFormData = new FormData();
-      pythonFormData.append('file', audioBlob, 'recording.webm');
-      pythonFormData.append('threshold', systemConfig.confidence_threshold);
-      pythonFormData.append('symptoms', patientData.symptoms || "");
+      spotBlobs.forEach((blob, i) => { if (blob) pythonFormData.append('files', blob, `spot${i + 1}.webm`); });
+      pythonFormData.append('symptoms', fullSymptoms);
+      pythonFormData.append('age_months', calculateAgeMonths(patientData.dob));
+      if (bpm !== null) pythonFormData.append('breaths_per_minute', bpm);
 
-      const submitRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
+      const submitRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze_child', pythonFormData);
       const jobId = submitRes.data.job_id;
 
       let aiResult = null;
       let attempts = 0;
-      const maxAttempts = 60; 
+      const maxAttempts = 90;
 
       while (attempts < maxAttempts) {
           attempts++;
@@ -221,7 +295,7 @@ const SmartRecorder = ({ onLogout }) => {
 
           if (statusRes.data.status === 'completed') {
               aiResult = statusRes.data.result;
-              break; 
+              break;
           } else if (statusRes.data.status === 'failed') {
               throw new Error(statusRes.data.error || "AI Analysis Failed");
           }
@@ -234,20 +308,20 @@ const SmartRecorder = ({ onLogout }) => {
 
       const token = await auth.currentUser.getIdToken();
       const nodeFormData = new FormData();
-      nodeFormData.append('file', audioBlob, 'recording.webm');
+      nodeFormData.append('file', spotBlobs.find(Boolean), 'recording.webm');   // first recorded spot is archived
       nodeFormData.append('name', patientData.name);
       nodeFormData.append('age', calculatedAge);
       nodeFormData.append('dob', patientData.dob);
       nodeFormData.append('location', patientData.location);
       nodeFormData.append('phone', patientData.phone);
-      nodeFormData.append('symptoms', patientData.symptoms || "");
+      nodeFormData.append('symptoms', fullSymptoms);
       nodeFormData.append('diagnosis', aiResult.preliminary_assessment);
       nodeFormData.append('risk_level', aiResult.risk_level_output);
       nodeFormData.append('biomarkers', JSON.stringify(aiResult.biomarkers));
-      nodeFormData.append('spectrogram', ""); 
+      nodeFormData.append('spectrogram', "");
 
       await axios.post(`${config.API_BASE_URL}/patients`, nodeFormData, {
-        headers: { 
+        headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'multipart/form-data'
         }
@@ -359,27 +433,61 @@ const SmartRecorder = ({ onLogout }) => {
           
           <hr className="my-5" style={{borderColor: 'rgba(255,255,255,0.1)'}} />
 
-          {/* Recorder UI */}
+          {/* IMCI checks */}
+          <div className="row g-4 text-start mb-5">
+              <div className="col-12 col-md-4">
+                  <label className="form-label small fw-bold text-muted text-uppercase">Breaths per minute</label>
+                  <input type="number" min="5" max="150" className="form-control" style={glassInputStyle}
+                         value={breathsPerMinute} onChange={(e) => setBreathsPerMinute(e.target.value)}
+                         placeholder="Count for a full 60 seconds" />
+                  <small className="text-muted">Child calm, chest uncovered. Needed for the IMCI fast-breathing check.</small>
+              </div>
+              <div className="col-12 col-md-8">
+                  <label className="form-label small fw-bold text-muted text-uppercase">IMCI signs present</label>
+                  <div className="d-flex flex-wrap gap-2">
+                      {IMCI_SIGNS.map(sign => (
+                          <button key={sign.key} type="button" onClick={() => toggleDangerSign(sign.key)}
+                                  className={`btn btn-sm rounded-pill ${dangerSigns.includes(sign.key) ? 'btn-danger' : 'btn-outline-light'}`}>
+                              {sign.label}
+                          </button>
+                      ))}
+                  </div>
+              </div>
+          </div>
+
+          {/* Recorder UI: several chest spots per child */}
           <div className="text-center">
-              <h5 className="fw-bold mb-4 text-white">Lung Sound Capture</h5>
+              <h5 className="fw-bold mb-2 text-white">Lung Sound Capture</h5>
+              <p className="text-muted mb-4">
+                  Press the phone microphone firmly on the bare skin, keep it still and the room quiet.
+                  Record at least 2 spots ({RECORD_SECONDS} s each, stops automatically).
+              </p>
               <div className="glass-card d-inline-block p-5 mb-4 shadow-sm" style={{background: 'rgba(255,255,255,0.05)'}}>
                   <LungAnimation isRecording={isRecording} volume={volume} />
+                  {isRecording && <div className="text-white mt-3 fw-bold">{CHEST_SPOTS[activeSpot]}: {secondsLeft}s</div>}
+              </div>
+              <div className="row g-3 col-12 col-md-10 mx-auto mb-4">
+                  {CHEST_SPOTS.map((spot, i) => (
+                      <div key={spot} className="col-6 col-md-3 d-grid">
+                          {activeSpot === i ? (
+                              <button className="btn btn-danger rounded-pill animate-pulse py-3" onClick={stopRecording}>
+                                  <FaStop className="me-2"/> Stop
+                              </button>
+                          ) : (
+                              <button className={`btn rounded-pill py-3 ${spotBlobs[i] ? 'btn-success' : 'btn-outline-danger text-white border-danger'}`}
+                                      onClick={() => startRecording(i)} disabled={isRecording || loading || serverStatus !== 'ready'}>
+                                  {spotBlobs[i] ? <FaCheckCircle className="me-2"/> : <FaMicrophone className="me-2"/>}
+                                  {spot}{spotBlobs[i] ? ' (redo)' : ''}
+                              </button>
+                          )}
+                      </div>
+                  ))}
               </div>
               <div className="d-grid gap-2 col-12 col-md-6 mx-auto">
-              {!isRecording ? (
-                  <button 
-                    className="btn btn-outline-danger btn-lg rounded-pill shadow-sm py-3 text-white border-danger" 
-                    style={{borderWidth: '2px'}} 
-                    onClick={startRecording}
-                    disabled={serverStatus !== 'ready'} 
-                  >
-                    {serverStatus !== 'ready' ? '⏳ Waiting for AI...' : <><FaMicrophone className="me-2"/> Start Recording</>}
+                  <button className="btn btn-primary btn-lg rounded-pill shadow-sm py-3" onClick={analyseChild}
+                          disabled={isRecording || loading || recordedSpots === 0 || serverStatus !== 'ready'}>
+                      {serverStatus !== 'ready' ? '⏳ Waiting for AI...' : <><FaStethoscope className="me-2"/> Analyse child ({recordedSpots} spot{recordedSpots === 1 ? '' : 's'})</>}
                   </button>
-              ) : (
-                  <button className="btn btn-danger btn-lg rounded-pill shadow-sm animate-pulse py-3" onClick={stopRecording}>
-                  <FaStop className="me-2"/> Stop Recording
-                  </button>
-              )}
               </div>
           </div>
 
@@ -399,14 +507,17 @@ const SmartRecorder = ({ onLogout }) => {
                       <h1 className={`mb-2 fw-bold display-6 ${getRiskColor(analysis.risk_level_output)}`}>
                           {analysis.preliminary_assessment}
                       </h1>
+                      {analysis.biomarkers?.sound_finding && (
+                          <p className="text-white mb-1">Heard: <strong>{analysis.biomarkers.sound_finding}</strong></p>
+                      )}
                       <p className="text-muted mb-4 fs-5">Risk Level: <strong>{analysis.risk_level_output.toUpperCase()}</strong></p>
 
                       <div className="p-4 rounded-3 shadow-sm mb-3" style={{background: 'rgba(0,0,0,0.2)'}}>
-                          <label className="small fw-bold text-muted text-uppercase mb-3 d-block"><FaChartBar className="me-2"/>AI Confidence Scores</label>
+                          <label className="small fw-bold text-muted text-uppercase mb-3 d-block"><FaChartBar className="me-2"/>AI Sound Scores (all spots combined)</label>
                           
                           <div className="mb-3">
                               <div className="d-flex justify-content-between mb-1 text-white">
-                                  <span>Pneumonia</span>
+                                  <span>Crackles (pneumonia sign)</span>
                                   <span className="fw-bold">{((analysis.biomarkers?.prob_pneumonia || 0) * 100).toFixed(1)}%</span>
                               </div>
                               <div className="progress" style={{height: '10px', background: 'rgba(255,255,255,0.1)'}}>
@@ -416,7 +527,7 @@ const SmartRecorder = ({ onLogout }) => {
                           
                           <div className="mb-3">
                               <div className="d-flex justify-content-between mb-1 text-white">
-                                  <span>Asthma</span>
+                                  <span>Wheeze (asthma sign)</span>
                                   <span className="fw-bold">{((analysis.biomarkers?.prob_asthma || 0) * 100).toFixed(1)}%</span>
                               </div>
                               <div className="progress" style={{height: '10px', background: 'rgba(255,255,255,0.1)'}}>

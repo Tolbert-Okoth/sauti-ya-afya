@@ -1,101 +1,195 @@
 {
-  "pipeline_version": 3,
+  "pipeline_version": 4,
   "classes": [
     "Asthma",
     "Normal",
     "Pneumonia"
   ],
   "seed": 42,
-  "best_epoch": 12,
+  "best_epoch": 5,
   "noise_augmentation": {
     "dir": "noise_train",
-    "copies": 2,
+    "copies": 1,
     "snr_db": [
       0,
       20
     ]
   },
-  "note": "Held-out patients only. Source data (ICBHI 2017, KAUH and assorted clips) is predominantly ADULT; these numbers do not establish pediatric performance.",
+  "sprsound": true,
+  "labels": "sound",
+  "class_meaning": {
+    "Asthma": "wheeze-type sounds (wheeze, rhonchi, stridor)",
+    "Normal": "normal breath sounds",
+    "Pneumonia": "crackles (fine/coarse)"
+  },
+  "max_train_per_class": 1300,
+  "note": "Held-out patients only, reported overall and per age group. 'child' = SPRSound (Shanghai, ages 1 month-18 years) plus KAUH patients under 18; 'unknown' = ICBHI and clips without age information (mostly adults).",
   "validation": {
-    "recordings": 113,
-    "unusable_recordings": 0,
-    "patients": 28,
-    "accuracy": 0.9557522123893806,
-    "macro_recall": 0.952183908045977,
-    "recall_sensitivity": {
-      "Asthma": 1.0,
-      "Normal": 0.896551724137931,
-      "Pneumonia": 0.96
-    },
-    "precision": {
-      "Asthma": 0.9714285714285714,
-      "Normal": 0.9629629629629629,
-      "Pneumonia": 0.9411764705882353
-    },
-    "confusion_matrix": {
-      "rows_true_cols_pred": [
-        "Asthma",
-        "Normal",
-        "Pneumonia"
-      ],
-      "matrix": [
-        [
-          34,
-          0,
-          0
+    "all": {
+      "recordings": 742,
+      "unusable_recordings": 58,
+      "patients": 129,
+      "accuracy": 0.7183288409703504,
+      "macro_recall": 0.7196310035142522,
+      "recall_sensitivity": {
+        "Asthma": 0.7384615384615385,
+        "Normal": 0.725,
+        "Pneumonia": 0.6954314720812182
+      },
+      "precision": {
+        "Asthma": 0.47058823529411764,
+        "Normal": 0.8810126582278481,
+        "Pneumonia": 0.5591836734693878
+      },
+      "confusion_matrix": {
+        "rows_true_cols_pred": [
+          "Asthma",
+          "Normal",
+          "Pneumonia"
         ],
-        [
-          0,
-          26,
-          3
-        ],
-        [
-          1,
-          1,
-          48
+        "matrix": [
+          [
+            48,
+            6,
+            11
+          ],
+          [
+            35,
+            348,
+            97
+          ],
+          [
+            19,
+            41,
+            137
+          ]
         ]
-      ]
+      }
+    },
+    "child": {
+      "recordings": 742,
+      "unusable_recordings": 58,
+      "patients": 129,
+      "accuracy": 0.7183288409703504,
+      "macro_recall": 0.7196310035142522,
+      "recall_sensitivity": {
+        "Asthma": 0.7384615384615385,
+        "Normal": 0.725,
+        "Pneumonia": 0.6954314720812182
+      },
+      "precision": {
+        "Asthma": 0.47058823529411764,
+        "Normal": 0.8810126582278481,
+        "Pneumonia": 0.5591836734693878
+      },
+      "confusion_matrix": {
+        "rows_true_cols_pred": [
+          "Asthma",
+          "Normal",
+          "Pneumonia"
+        ],
+        "matrix": [
+          [
+            48,
+            6,
+            11
+          ],
+          [
+            35,
+            348,
+            97
+          ],
+          [
+            19,
+            41,
+            137
+          ]
+        ]
+      }
     }
   },
   "test": {
-    "recordings": 110,
-    "unusable_recordings": 1,
-    "patients": 28,
-    "accuracy": 0.9090909090909091,
-    "macro_recall": 0.9014218299932586,
-    "recall_sensitivity": {
-      "Asthma": 0.972972972972973,
-      "Normal": 0.8333333333333334,
-      "Pneumonia": 0.8979591836734694
-    },
-    "precision": {
-      "Asthma": 0.972972972972973,
-      "Normal": 0.7692307692307693,
-      "Pneumonia": 0.9361702127659575
-    },
-    "confusion_matrix": {
-      "rows_true_cols_pred": [
-        "Asthma",
-        "Normal",
-        "Pneumonia"
-      ],
-      "matrix": [
-        [
-          36,
-          1,
-          0
+    "all": {
+      "recordings": 1079,
+      "unusable_recordings": 140,
+      "patients": 129,
+      "accuracy": 0.7126969416126042,
+      "macro_recall": 0.6712305636790763,
+      "recall_sensitivity": {
+        "Asthma": 0.6486486486486487,
+        "Normal": 0.7418546365914787,
+        "Pneumonia": 0.6231884057971014
+      },
+      "precision": {
+        "Asthma": 0.46601941747572817,
+        "Normal": 0.891566265060241,
+        "Pneumonia": 0.41346153846153844
+      },
+      "confusion_matrix": {
+        "rows_true_cols_pred": [
+          "Asthma",
+          "Normal",
+          "Pneumonia"
         ],
-        [
-          1,
-          20,
-          3
-        ],
-        [
-          0,
-          5,
-          44
+        "matrix": [
+          [
+            48,
+            17,
+            9
+          ],
+          [
+            32,
+            592,
+            174
+          ],
+          [
+            23,
+            55,
+            129
+          ]
         ]
-      ]
+      }
+    },
+    "child": {
+      "recordings": 1079,
+      "unusable_recordings": 140,
+      "patients": 129,
+      "accuracy": 0.7126969416126042,
+      "macro_recall": 0.6712305636790763,
+      "recall_sensitivity": {
+        "Asthma": 0.6486486486486487,
+        "Normal": 0.7418546365914787,
+        "Pneumonia": 0.6231884057971014
+      },
+      "precision": {
+        "Asthma": 0.46601941747572817,
+        "Normal": 0.891566265060241,
+        "Pneumonia": 0.41346153846153844
+      },
+      "confusion_matrix": {
+        "rows_true_cols_pred": [
+          "Asthma",
+          "Normal",
+          "Pneumonia"
+        ],
+        "matrix": [
+          [
+            48,
+            17,
+            9
+          ],
+          [
+            32,
+            592,
+            174
+          ],
+          [
+            23,
+            55,
+            129
+          ]
+        ]
+      }
     }
   }
 }

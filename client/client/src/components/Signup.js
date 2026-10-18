@@ -6,7 +6,7 @@ import { auth, googleProvider } from '../firebase';
 import axios from 'axios';
 import { 
   FaGoogle, FaUserPlus, FaUserMd, FaLock, 
-  FaArrowRight, FaStethoscope, FaBrain, FaChartLine, FaShieldAlt
+  FaArrowRight, FaStethoscope, FaChartLine
 } from 'react-icons/fa';
 import config from '../config';
 
