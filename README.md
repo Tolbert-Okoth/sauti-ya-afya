@@ -27,6 +27,17 @@ AI-powered audio triage with detailed spectrogram visualization
 
 Modular, scalable AI architecture for future model expansion
 
+🧪 AI Engine: current status (October 2026)
+
+The engine detects lung sounds (crackles, wheeze-type sounds, normal breathing) in children's recordings and
+classifies the child by combining 2-4 chest spots with breathing rate and WHO IMCI signs. On 129 held-out children
+it catches 79% of children with crackles and correctly clears 76% of those without. It is trained on stethoscope
+recordings (SPRSound, Shanghai) and not yet validated on phone recordings from Kenya: it is a screening aid only.
+
+- Full audit, fixes, experiments, results and next steps: [docs/AI_ENGINE_LOG.md](docs/AI_ENGINE_LOG.md)
+- Engine reference (API, noise handling, retraining): [ai-engine/README.md](ai-engine/README.md)
+- Benchmarks: [ai-engine/benchmarks/README.md](ai-engine/benchmarks/README.md)
+
 📸 Screenshots
 
 Login Portal / Doctor Dashboard
@@ -100,13 +111,15 @@ FastAPI (AI Engine), Axios (REST API consumption)
 
 Background Tasks for async audio processing
 
-AI Engine:
+AI Engine (details: ai-engine/README.md):
 
-PyTorch (MobileNetV2 CNN) for classification
+PyTorch MobileNetV2 trained on children's lung sounds (SPRSound), labelled by paediatricians per 5 s window
 
-torchaudio for DSP features (bandpass filter, Mel-spectrogram, zero-crossing, harmonic ratio)
+Targeted noise handling (hum notches, capped noise-floor reduction, heart-sound attenuation, voice/friction detection) plus noise-augmented training
 
-Groq LLM for human-readable, medical explanations
+Per-child analysis (POST /analyze_child): several chest spots + breathing rate + WHO IMCI rules
+
+Groq LLM explanation module (llm_bridge.py, not yet wired into the app)
 
 Modular AI Design:
 
@@ -167,7 +180,7 @@ Resolution: Mark cases as resolved or contact the caregiver via WhatsApp integra
 
 3. Field Screening (CHW)
 
-New Screening: Record patient demographics and capture lung sounds
+New Screening: Record patient demographics, count breaths per minute, tick IMCI signs, and record 2-4 chest spots (15 s each) for one per-child result
 
 Offline Sync: Save data locally and sync later via the Settings hub
 
