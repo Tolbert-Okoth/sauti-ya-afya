@@ -1,28 +1,36 @@
 {
-  "pipeline_version": 2,
+  "pipeline_version": 3,
   "classes": [
     "Asthma",
     "Normal",
     "Pneumonia"
   ],
   "seed": 42,
-  "best_epoch": 9,
+  "best_epoch": 12,
+  "noise_augmentation": {
+    "dir": "noise_train",
+    "copies": 2,
+    "snr_db": [
+      0,
+      20
+    ]
+  },
   "note": "Held-out patients only. Source data (ICBHI 2017, KAUH and assorted clips) is predominantly ADULT; these numbers do not establish pediatric performance.",
   "validation": {
     "recordings": 113,
     "unusable_recordings": 0,
     "patients": 28,
-    "accuracy": 0.9469026548672567,
-    "macro_recall": 0.9358620689655172,
+    "accuracy": 0.9557522123893806,
+    "macro_recall": 0.952183908045977,
     "recall_sensitivity": {
       "Asthma": 1.0,
-      "Normal": 0.8275862068965517,
-      "Pneumonia": 0.98
+      "Normal": 0.896551724137931,
+      "Pneumonia": 0.96
     },
     "precision": {
       "Asthma": 0.9714285714285714,
-      "Normal": 1.0,
-      "Pneumonia": 0.9074074074074074
+      "Normal": 0.9629629629629629,
+      "Pneumonia": 0.9411764705882353
     },
     "confusion_matrix": {
       "rows_true_cols_pred": [
@@ -38,13 +46,13 @@
         ],
         [
           0,
-          24,
-          5
+          26,
+          3
         ],
         [
           1,
-          0,
-          49
+          1,
+          48
         ]
       ]
     }
@@ -53,17 +61,17 @@
     "recordings": 110,
     "unusable_recordings": 1,
     "patients": 28,
-    "accuracy": 0.8545454545454545,
-    "macro_recall": 0.8256419684991113,
+    "accuracy": 0.9090909090909091,
+    "macro_recall": 0.9014218299932586,
     "recall_sensitivity": {
-      "Asthma": 0.8918918918918919,
-      "Normal": 0.6666666666666666,
-      "Pneumonia": 0.9183673469387755
+      "Asthma": 0.972972972972973,
+      "Normal": 0.8333333333333334,
+      "Pneumonia": 0.8979591836734694
     },
     "precision": {
-      "Asthma": 0.9428571428571428,
-      "Normal": 0.8,
-      "Pneumonia": 0.8181818181818182
+      "Asthma": 0.972972972972973,
+      "Normal": 0.7692307692307693,
+      "Pneumonia": 0.9361702127659575
     },
     "confusion_matrix": {
       "rows_true_cols_pred": [
@@ -73,19 +81,19 @@
       ],
       "matrix": [
         [
-          33,
-          0,
-          4
+          36,
+          1,
+          0
         ],
         [
-          2,
-          16,
-          6
+          1,
+          20,
+          3
         ],
         [
           0,
-          4,
-          45
+          5,
+          44
         ]
       ]
     }

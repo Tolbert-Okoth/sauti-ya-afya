@@ -1,0 +1,122 @@
+{
+  "model": "sauti_mobilenet_v3.pth",
+  "pipeline_version": 2,
+  "test_recordings": 111,
+  "clean": {
+    "macro_recall": 0.826,
+    "recall": {
+      "Asthma": 0.892,
+      "Normal": 0.667,
+      "Pneumonia": 0.918
+    },
+    "rejected_share": 0.009
+  },
+  "animals@10dB": {
+    "macro_recall": 0.541,
+    "recall": {
+      "Asthma": 0.946,
+      "Normal": 0.208,
+      "Pneumonia": 0.469
+    },
+    "rejected_share": 0.009
+  },
+  "animals@0dB": {
+    "macro_recall": 0.462,
+    "recall": {
+      "Asthma": 0.973,
+      "Normal": 0.208,
+      "Pneumonia": 0.204
+    },
+    "rejected_share": 0.009
+  },
+  "impulsive@10dB": {
+    "macro_recall": 0.569,
+    "recall": {
+      "Asthma": 0.676,
+      "Normal": 0.5,
+      "Pneumonia": 0.531
+    },
+    "rejected_share": 0.009
+  },
+  "impulsive@0dB": {
+    "macro_recall": 0.524,
+    "recall": {
+      "Asthma": 0.622,
+      "Normal": 0.542,
+      "Pneumonia": 0.408
+    },
+    "rejected_share": 0.009
+  },
+  "steady@10dB": {
+    "macro_recall": 0.333,
+    "recall": {
+      "Asthma": 0.108,
+      "Normal": 0.625,
+      "Pneumonia": 0.265
+    },
+    "rejected_share": 0.009
+  },
+  "steady@0dB": {
+    "macro_recall": 0.317,
+    "recall": {
+      "Asthma": 0.081,
+      "Normal": 0.667,
+      "Pneumonia": 0.204
+    },
+    "rejected_share": 0.009
+  },
+  "voices@10dB": {
+    "macro_recall": 0.367,
+    "recall": {
+      "Asthma": 0.568,
+      "Normal": 0.125,
+      "Pneumonia": 0.408
+    },
+    "rejected_share": 0.009
+  },
+  "voices@0dB": {
+    "macro_recall": 0.345,
+    "recall": {
+      "Asthma": 0.541,
+      "Normal": 0.208,
+      "Pneumonia": 0.286
+    },
+    "rejected_share": 0.009
+  },
+  "white_hiss@10dB": {
+    "macro_recall": 0.347,
+    "recall": {
+      "Asthma": 0.0,
+      "Normal": 1.0,
+      "Pneumonia": 0.041
+    },
+    "rejected_share": 0.009
+  },
+  "white_hiss@0dB": {
+    "macro_recall": 0.34,
+    "recall": {
+      "Asthma": 0.0,
+      "Normal": 1.0,
+      "Pneumonia": 0.02
+    },
+    "rejected_share": 0.009
+  },
+  "mains_hum@10dB": {
+    "macro_recall": 0.745,
+    "recall": {
+      "Asthma": 0.919,
+      "Normal": 0.458,
+      "Pneumonia": 0.857
+    },
+    "rejected_share": 0.009
+  },
+  "mains_hum@0dB": {
+    "macro_recall": 0.742,
+    "recall": {
+      "Asthma": 0.973,
+      "Normal": 0.333,
+      "Pneumonia": 0.918
+    },
+    "rejected_share": 0.009
+  }
+}
