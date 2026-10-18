@@ -39,6 +39,34 @@ FastAPI service that classifies a lung-sound recording as **Asthma/wheeze**, **N
      Any WHO/IMCI danger sign sets the risk to **High**.
    - `noise_report`: what the denoiser found (hum frequencies, share of heart-sound, voice and friction frames).
 
+## Per-child analysis (`POST /analyze_child`)
+
+The app records **2–4 chest spots** per child and sends them together, with the breathing rate and signs:
+
+| Form field | Meaning |
+|---|---|
+| `files` | 1–4 recordings (one per chest spot) |
+| `age_months` | age in months (IMCI cut-offs depend on it) |
+| `breaths_per_minute` | counted over a full minute (optional, but needed for the fast-breathing check) |
+| `symptoms` | free text plus ticked IMCI signs (danger signs, chest indrawing, stridor, blue lips) |
+
+Each spot is scored separately (`biomarkers.spots`). Crackle and wheeze scores are combined across spots with
+rules chosen on validation children (`evaluate_children.py`, target ≥80% sensitivity), then `classify_child`
+applies WHO IMCI logic (`imci.py`): general danger sign → refer urgently; under 2 months with fast breathing,
+chest indrawing or crackles → refer urgently; fast breathing / chest indrawing → IMCI pneumonia signs (or, with
+wheeze, a bronchodilator trial and reassessment); crackles alone → clinician review / count breathing; wheeze alone
+→ IMCI wheeze pathway; otherwise Low. The response adds `explanation` (plain text for the health worker).
+
+On the 129 held-out children (`benchmarks/child_level_v7model.json`), up to 4 spots each:
+
+| Finding | Combine rule | Sensitivity | Specificity | Children with finding |
+|---|---|---|---|---|
+| Crackles | mean of the 2 highest spots, ≥ 0.49 | 0.79 | 0.76 | 29 |
+| Wheeze-type | mean of spots, ≥ 0.28 | 0.44 | 0.94 | 16 |
+
+Wheeze detection per child is weak (few children with wheeze in the data); breathing rate and IMCI signs still
+drive the risk level. The single-recording `POST /analyze` endpoint is unchanged.
+
 ## Noise handling
 
 Removing "all noise" blindly also removes crackles and wheezes, so each noise type is treated separately

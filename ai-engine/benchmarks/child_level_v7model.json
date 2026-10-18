@@ -1,0 +1,56 @@
+{
+  "model": "sauti_mobilenet_v7.pth",
+  "min_sensitivity_target": 0.8,
+  "children": {
+    "val": 129,
+    "test": 129
+  },
+  "findings": {
+    "crackle": {
+      "max": {
+        "threshold": 0.54,
+        "test_sensitivity": 0.793,
+        "test_specificity": 0.74,
+        "test_children_with_finding": 29,
+        "test_children": 129
+      },
+      "top2_mean": {
+        "threshold": 0.49,
+        "test_sensitivity": 0.793,
+        "test_specificity": 0.76,
+        "test_children_with_finding": 29,
+        "test_children": 129
+      },
+      "mean": {
+        "threshold": 0.37,
+        "test_sensitivity": 0.759,
+        "test_specificity": 0.75,
+        "test_children_with_finding": 29,
+        "test_children": 129
+      }
+    },
+    "wheeze": {
+      "max": {
+        "threshold": 0.58,
+        "test_sensitivity": 0.25,
+        "test_specificity": 0.973,
+        "test_children_with_finding": 16,
+        "test_children": 129
+      },
+      "top2_mean": {
+        "threshold": 0.5,
+        "test_sensitivity": 0.312,
+        "test_specificity": 0.973,
+        "test_children_with_finding": 16,
+        "test_children": 129
+      },
+      "mean": {
+        "threshold": 0.28,
+        "test_sensitivity": 0.438,
+        "test_specificity": 0.938,
+        "test_children_with_finding": 16,
+        "test_children": 129
+      }
+    }
+  }
+}

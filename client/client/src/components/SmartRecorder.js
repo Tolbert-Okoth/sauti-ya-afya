@@ -513,7 +513,7 @@ const SmartRecorder = ({ onLogout }) => {
                       <p className="text-muted mb-4 fs-5">Risk Level: <strong>{analysis.risk_level_output.toUpperCase()}</strong></p>
 
                       <div className="p-4 rounded-3 shadow-sm mb-3" style={{background: 'rgba(0,0,0,0.2)'}}>
-                          <label className="small fw-bold text-muted text-uppercase mb-3 d-block"><FaChartBar className="me-2"/>AI Sound Scores (best spot)</label>
+                          <label className="small fw-bold text-muted text-uppercase mb-3 d-block"><FaChartBar className="me-2"/>AI Sound Scores (all spots combined)</label>
                           
                           <div className="mb-3">
                               <div className="d-flex justify-content-between mb-1 text-white">

@@ -240,13 +240,13 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOL
 # ---------------------------------------------------------------------------
 # How spot scores are combined and the thresholds, chosen on VALIDATION children by
 # evaluate_children.py (screening target: >= 80% sensitivity); see benchmarks/README.md.
-CHILD_COMBINE = "max"
-CRACKLE_THRESHOLD = 0.5
-WHEEZE_THRESHOLD = 0.5
+# Test children (129): crackles sensitivity 0.79 / specificity 0.76; wheeze 0.44 / 0.94 (only 16 children with wheeze).
+CRACKLE_COMBINE, CRACKLE_THRESHOLD = "top2_mean", 0.49
+WHEEZE_COMBINE, WHEEZE_THRESHOLD = "mean", 0.28
 MAX_SPOTS = 4
 
 
-def combine_spots(values, strategy=CHILD_COMBINE):
+def combine_spots(values, strategy):
     values = sorted(values, reverse=True)
     if strategy == "max":
         return values[0]
@@ -310,8 +310,8 @@ def analyze_child(file_paths, symptoms="", age_months=None, breaths_per_minute=N
     if not scored:
         raise RecordingUnusable(next(s["message"] for s in spots))
 
-    crackle_score = combine_spots([p["Pneumonia"] for p in scored])
-    wheeze_score = combine_spots([p["Asthma"] for p in scored])
+    crackle_score = combine_spots([p["Pneumonia"] for p in scored], CRACKLE_COMBINE)
+    wheeze_score = combine_spots([p["Asthma"] for p in scored], WHEEZE_COMBINE)
     crackles, wheeze = crackle_score >= CRACKLE_THRESHOLD, wheeze_score >= WHEEZE_THRESHOLD
     present, danger = parse_symptoms(symptoms)
     fast = imci.is_fast_breathing(age_months, breaths_per_minute)
@@ -329,7 +329,7 @@ def analyze_child(file_paths, symptoms="", age_months=None, breaths_per_minute=N
             "ai_diagnosis": ai_dx,
             "sound_finding": ("crackles and wheeze" if crackles and wheeze else "crackles" if crackles
                               else "wheeze" if wheeze else "normal"),
-            # Child-level scores (best spot); they do not sum to 1.
+            # Child-level scores combined across spots; they do not sum to 1.
             "prob_pneumonia": round(crackle_score, 3),
             "prob_asthma": round(wheeze_score, 3),
             "prob_normal": round(float(np.mean([p["Normal"] for p in scored])), 3),
@@ -340,7 +340,7 @@ def analyze_child(file_paths, symptoms="", age_months=None, breaths_per_minute=N
             "fast_breathing": fast,
             "symptoms_reported": present,
             "danger_signs": danger,
-            "thresholds": {"crackles": CRACKLE_THRESHOLD, "wheeze": WHEEZE_THRESHOLD, "combine": CHILD_COMBINE},
+            "thresholds": {"crackles": [CRACKLE_COMBINE, CRACKLE_THRESHOLD], "wheeze": [WHEEZE_COMBINE, WHEEZE_THRESHOLD]},
         },
         "visualizer": {"spectrogram_image": ""},
         "preliminary_assessment": assessment,
