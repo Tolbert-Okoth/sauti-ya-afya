@@ -13,6 +13,7 @@ import torch
 from torchvision import models
 
 import audio_pipeline as ap
+import imci
 
 torch.set_num_threads(1)
 
@@ -162,8 +163,12 @@ def decide(probs, threshold):
 
 
 @torch.no_grad()
-def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOLD):
-    threshold = clamp_threshold(sensitivity_threshold)
+def score_recording(file_path):
+    """Decode, denoise and score one recording.
+
+    Returns (probs {class: p}, usable windows, rejected reason Counter, total windows, noise report).
+    Raises RecordingUnusable with advice for the health worker when nothing usable is left.
+    """
     y = ap.load_audio(file_path)
     usable, rejected, n_windows, noise_report = ap.analysis_windows(y)
     rejected = Counter(rejected)
@@ -180,9 +185,14 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOL
         raise RecordingUnusable(f"Recording is {message} and record again.")
 
     batch = torch.stack([ap.window_tensor(w) for w in usable])
-    window_probs = torch.softmax(model(batch), dim=1)
-    mean_probs = window_probs.mean(dim=0)
+    mean_probs = torch.softmax(model(batch), dim=1).mean(dim=0)
     probs = {c: float(p) for c, p in zip(CLASSES, mean_probs)}
+    return probs, usable, rejected, n_windows, noise_report
+
+
+def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOLD):
+    threshold = clamp_threshold(sensitivity_threshold)
+    probs, usable, rejected, n_windows, noise_report = score_recording(file_path)
 
     diagnosis, risk = decide(probs, threshold)
 
@@ -223,3 +233,119 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOL
         "disclaimer": DISCLAIMER,
     }
 
+
+
+# ---------------------------------------------------------------------------
+# 👶 PER-CHILD ANALYSIS: several chest spots + breathing rate + signs (WHO IMCI)
+# ---------------------------------------------------------------------------
+# How spot scores are combined and the thresholds, chosen on VALIDATION children by
+# evaluate_children.py (screening target: >= 80% sensitivity); see benchmarks/README.md.
+CHILD_COMBINE = "max"
+CRACKLE_THRESHOLD = 0.5
+WHEEZE_THRESHOLD = 0.5
+MAX_SPOTS = 4
+
+
+def combine_spots(values, strategy=CHILD_COMBINE):
+    values = sorted(values, reverse=True)
+    if strategy == "max":
+        return values[0]
+    if strategy == "top2_mean":
+        return float(np.mean(values[:2]))
+    return float(np.mean(values))
+
+
+def classify_child(crackles, wheeze, fast_breathing, age_months, present, danger):
+    """IMCI-style classification of the whole child. Returns (assessment, risk, ai_diagnosis, explanation)."""
+    general = [d for d in danger if d in imci.GENERAL_DANGER_SIGNS]
+    indrawing = any(d in imci.PNEUMONIA_SIGNS for d in danger)
+    fever = "fever" in present
+    heard = ("crackles and wheeze" if crackles and wheeze else "crackles" if crackles
+             else "wheeze-type sounds" if wheeze else "no crackles or wheeze")
+    sound_dx = "Pneumonia" if crackles else "Asthma" if wheeze else "Normal"
+
+    if general:
+        return ("Severe illness - refer urgently", "High", sound_dx,
+                f"IMCI general danger sign reported ({', '.join(general)}). Refer urgently. Lung sounds: {heard}.")
+    if age_months is not None and age_months < 2 and (fast_breathing or indrawing or crackles):
+        return ("Young infant: possible serious infection - refer urgently", "High", sound_dx,
+                f"Under 2 months with {'fast breathing' if fast_breathing else 'chest indrawing' if indrawing else 'crackles'}."
+                " IMCI: possible serious bacterial infection, refer urgently.")
+    if fast_breathing or indrawing:
+        sign = "fast breathing" if fast_breathing else "chest indrawing"
+        if wheeze and not crackles:
+            return ("Wheeze with " + sign + " - bronchodilator trial, reassess", "High", "Asthma",
+                    f"Wheeze-type sounds with {sign}. IMCI: give a rapid-acting bronchodilator trial and reassess "
+                    "breathing before classifying as pneumonia.")
+        return ("IMCI pneumonia signs" + (" with crackles" if crackles else ""), "High", "Pneumonia",
+                f"{sign.capitalize()} meets the IMCI pneumonia sign. Lung sounds: {heard}. Follow the local IMCI pneumonia protocol.")
+    if crackles:
+        if fast_breathing is None:
+            return ("Crackles heard - count breathing rate", "Medium", "Suspected Pneumonia",
+                    "Crackles were heard. Count the breathing rate for a full minute and look for chest indrawing to classify.")
+        return ("Crackles heard" + (" with fever" if fever else "") + " - clinician review", "Medium", "Suspected Pneumonia",
+                "Crackles were heard but breathing is not fast for age. Have a clinician review"
+                + (", especially with fever." if fever else "; reassess if the child gets worse."))
+    if wheeze:
+        return ("Wheeze heard - IMCI wheeze pathway", "Medium", "Suspected Asthma",
+                "Wheeze-type sounds were heard without fast breathing. Follow the IMCI wheeze guidance; refer recurrent wheeze.")
+    note = " Count the breathing rate for a full minute to complete the IMCI check." if fast_breathing is None else ""
+    return ("No crackles or wheeze heard", "Low", "Normal",
+            "No crackles or wheeze-type sounds were detected at the recorded spots." + note)
+
+
+def analyze_child(file_paths, symptoms="", age_months=None, breaths_per_minute=None):
+    """Analyse 1-4 chest-spot recordings of ONE child and classify the child (IMCI-style)."""
+    spots, scored = [], []
+    for i, path in enumerate(file_paths[:MAX_SPOTS], start=1):
+        try:
+            probs, usable, rejected, n_windows, _ = score_recording(path)
+        except (RecordingUnusable, ap.AudioDecodeError) as e:
+            spots.append({"spot": i, "usable": False, "message": str(e)})
+            continue
+        scored.append(probs)
+        spots.append({"spot": i, "usable": True, "sound_finding": SOUND_FINDING[max(probs, key=probs.get)],
+                      "prob_crackles": round(probs["Pneumonia"], 3), "prob_wheeze": round(probs["Asthma"], 3),
+                      "prob_normal": round(probs["Normal"], 3), "segments_analyzed": len(usable)})
+    if not scored:
+        raise RecordingUnusable(next(s["message"] for s in spots))
+
+    crackle_score = combine_spots([p["Pneumonia"] for p in scored])
+    wheeze_score = combine_spots([p["Asthma"] for p in scored])
+    crackles, wheeze = crackle_score >= CRACKLE_THRESHOLD, wheeze_score >= WHEEZE_THRESHOLD
+    present, danger = parse_symptoms(symptoms)
+    fast = imci.is_fast_breathing(age_months, breaths_per_minute)
+    assessment, risk, ai_dx, explanation = classify_child(crackles, wheeze, fast, age_months, present, danger)
+
+    notes = []
+    if len(scored) < 2:
+        notes.append("Only one usable chest spot: record at least 2 spots for a reliable result.")
+    unusable = [s["spot"] for s in spots if not s["usable"]]
+    if unusable:
+        notes.append(f"Spot(s) {unusable} could not be analysed; see each spot's message.")
+    return {
+        "status": "success",
+        "biomarkers": {
+            "ai_diagnosis": ai_dx,
+            "sound_finding": ("crackles and wheeze" if crackles and wheeze else "crackles" if crackles
+                              else "wheeze" if wheeze else "normal"),
+            # Child-level scores (best spot); they do not sum to 1.
+            "prob_pneumonia": round(crackle_score, 3),
+            "prob_asthma": round(wheeze_score, 3),
+            "prob_normal": round(float(np.mean([p["Normal"] for p in scored])), 3),
+            "spots": spots,
+            "age_months": age_months,
+            "breaths_per_minute": breaths_per_minute,
+            "fast_breathing_cutoff": imci.fast_breathing_cutoff(age_months),
+            "fast_breathing": fast,
+            "symptoms_reported": present,
+            "danger_signs": danger,
+            "thresholds": {"crackles": CRACKLE_THRESHOLD, "wheeze": WHEEZE_THRESHOLD, "combine": CHILD_COMBINE},
+        },
+        "visualizer": {"spectrogram_image": ""},
+        "preliminary_assessment": assessment,
+        "explanation": explanation,
+        "risk_level_output": risk,
+        "notes": notes,
+        "disclaimer": DISCLAIMER,
+    }

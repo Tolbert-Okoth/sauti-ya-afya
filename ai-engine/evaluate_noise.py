@@ -72,6 +72,9 @@ def main():
     parser.add_argument("--out", default="noise_robustness.json")
     parser.add_argument("--sprsound-dir", default="", help="include SPRSound (paediatric) recordings")
     parser.add_argument("--age-group", default="", help="only test recordings of this group: child / adult / unknown")
+    parser.add_argument("--labels", choices=["diagnosis", "sound"], default="diagnosis",
+                        help="'sound': SPRSound children labelled by audible sound (needs --sprsound-dir)")
+    parser.add_argument("--max-recordings", type=int, default=0, help="random subset of the test set (0 = all)")
     args = parser.parse_args()
 
     ap = load_pipeline(args.legacy_pipeline)
@@ -81,12 +84,17 @@ def main():
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
 
-    recordings = tr.collect_recordings(args.data)
-    if args.sprsound_dir:
-        recordings += tr.sprsound_recordings(args.sprsound_dir, tr.CLASS_DIRS)
+    if args.labels == "sound":
+        recordings = tr.sprsound_sound_recordings(args.sprsound_dir, tr.CLASS_DIRS)
+    else:
+        recordings = tr.collect_recordings(args.data)
+        if args.sprsound_dir:
+            recordings += tr.sprsound_recordings(args.sprsound_dir, tr.CLASS_DIRS)
     test = tr.split_by_patient(recordings, seed=42)["test"]
     if args.age_group:
         test = [r for r in test if r["age_group"] == args.age_group]
+    if args.max_recordings and len(test) > args.max_recordings:
+        test = random.Random(0).sample(test, args.max_recordings)
     clean = [ap.load_audio(r["path"]) for r in test]
     labels = [r["label"] for r in test]
 

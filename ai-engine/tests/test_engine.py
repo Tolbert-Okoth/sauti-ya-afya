@@ -184,3 +184,52 @@ def test_jobs_expire(client, monkeypatch):
     with main.JOBS_LOCK:
         main.JOBS["old"] = {"status": "completed", "created": 0}
     assert c.get("/status/old").status_code == 404
+
+
+# --- per-child (several chest spots, IMCI) --------------------------------
+
+@pytest.mark.parametrize("crackles,wheeze,fast,age,present,danger,risk,starts", [
+    (False, False, None, 24, [], ["convulsions"], "High", "Severe illness"),
+    (True, False, False, 1, [], [], "High", "Young infant"),
+    (False, False, True, 24, [], [], "High", "IMCI pneumonia signs"),
+    (False, False, False, 24, [], ["chest_indrawing"], "High", "IMCI pneumonia signs"),
+    (False, True, True, 24, [], [], "High", "Wheeze with fast breathing"),
+    (True, False, None, 24, [], [], "Medium", "Crackles heard - count"),
+    (True, False, False, 24, ["fever"], [], "Medium", "Crackles heard with fever"),
+    (False, True, False, 24, [], [], "Medium", "Wheeze heard"),
+    (False, False, False, 24, [], [], "Low", "No crackles or wheeze"),
+])
+def test_classify_child(crackles, wheeze, fast, age, present, danger, risk, starts):
+    assessment, got_risk, _, explanation = analyzer.classify_child(crackles, wheeze, fast, age, present, danger)
+    assert got_risk == risk and assessment.startswith(starts) and explanation
+
+
+def test_fast_breathing_cutoffs():
+    import imci
+    assert [imci.fast_breathing_cutoff(m) for m in (1, 6, 24, 72)] == [60, 50, 40, 30]
+    assert imci.is_fast_breathing(24, 40) is True and imci.is_fast_breathing(24, 39) is False
+    assert imci.is_fast_breathing(None, 50) is None and imci.is_fast_breathing(24, None) is None
+
+
+def test_analyze_child_combines_spots_and_reports_unusable_ones(tmp_path):
+    good = write_wav(tmp_path / "a.wav", breath_like(10))
+    silent = write_wav(tmp_path / "s.wav", np.zeros(SR * 10, dtype=np.float32))
+    r = analyzer.analyze_child([good, silent], symptoms="", age_months=24, breaths_per_minute=50)
+    assert r["biomarkers"]["fast_breathing"] is True
+    assert r["risk_level_output"] == "High"          # fast breathing alone meets the IMCI sign
+    assert [s["usable"] for s in r["biomarkers"]["spots"]] == [True, False]
+    with pytest.raises(analyzer.RecordingUnusable):
+        analyzer.analyze_child([silent])
+
+
+def test_api_child_happy_path_and_limits(client, tmp_path):
+    c, _ = client
+    path = write_wav(tmp_path / "a.wav", breath_like(10))
+    files = [("files", (f"spot{i}.wav", open(path, "rb"), "audio/wav")) for i in range(2)]
+    r = c.post("/analyze_child", files=files, data={"age_months": "30", "breaths_per_minute": "32"})
+    assert r.status_code == 200
+    job = c.get(f"/status/{r.json()['job_id']}").json()
+    assert job["status"] == "completed"
+    assert len(job["result"]["biomarkers"]["spots"]) == 2 and job["result"]["explanation"]
+    too_many = [("files", (f"s{i}.wav", open(path, "rb"), "audio/wav")) for i in range(5)]
+    assert c.post("/analyze_child", files=too_many).status_code == 400
