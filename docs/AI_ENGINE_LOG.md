@@ -22,8 +22,9 @@ experiment including the ones that failed, how to reproduce the results, and wha
 7. [All results in one place](#7-all-results-in-one-place)
 8. [Data sources and licences](#8-data-sources-and-licences)
 9. [Reproducing the work](#9-reproducing-the-work)
-10. [Open issues and next steps](#10-open-issues-and-next-steps)
-11. [References](#11-references)
+10. [Limitations](#10-limitations)
+11. [Open issues and next steps](#11-open-issues-and-next-steps)
+12. [References](#12-references)
 
 ---
 
@@ -278,7 +279,86 @@ Splits are deterministic (seed 42). If `evaluate_children.py` gives new threshol
 
 ---
 
-## 10. Open issues and next steps
+## 10. Limitations
+
+Everything below applies to the current engine (model v7, `/analyze_child`) unless stated otherwise.
+
+### Clinical and regulatory
+
+- **Not a medical device and not clinically validated.** No prospective study, no ethics approval, no regulatory
+  review (e.g. Kenya's Pharmacy and Poisons Board). It is a screening aid; a health worker's assessment decides.
+- **It detects sounds, not diseases.** "Pneumonia" in the API means crackles were heard and "Asthma" means
+  wheeze-type sounds. Crackles also occur in bronchiolitis, bronchitis, heart failure and other conditions, and
+  pneumonia can be present with no crackles at the recorded spots.
+- **The IMCI logic is simplified.** It uses breathing rate, chest indrawing, danger signs and fever as reported. It
+  has no oximetry, no assessment of malnutrition, HIV exposure or dehydration, no treatment advice, and no
+  follow-up rules. For children 5 years and over, the fast-breathing cut-off of 30/min is a general guide, not an IMCI band.
+- **The engine depends on what the health worker enters.** A missing or wrong breathing count, or unticked
+  danger signs, changes the result. Without a breathing count, the fast-breathing check is skipped (the result says so).
+
+### Data
+
+- **One hospital, one device, one country.** All children's data is SPRSound: Shanghai Children's Medical Center,
+  one stethoscope model (Yunting II), recorded at 8 kHz. Performance on Kenyan children, other ages or body types,
+  other illnesses (e.g. malaria, TB, HIV-related pneumonia) and **phone microphones is unknown**.
+- **Chest-spot positions are assumed.** SPRSound records at positions p1-p4 (and p5-p8 in later sets); their exact
+  anatomical meaning was not confirmed from its documentation. The app's labels ("left/right upper/lower back") are
+  an assumption and should be checked against the SPRSound paper and clinical practice.
+- **Label choices.** Wheeze, rhonchi and stridor are grouped as one "wheeze-type" class, although stridor is an
+  upper-airway sign. "Wheeze + crackle" events count as crackles. Recordings rated "Poor Quality" were excluded,
+  so the model never learned what such recordings look like.
+- **Class balance.** Normal training recordings were capped (1,300) to fit the CPU budget; there are only about 70
+  asthma children, so wheeze is under-represented.
+- **Ages in the older data.** ICBHI ages need a login, so ICBHI patients are tagged "unknown"; the adult models
+  (v3-v5) are not suitable for children.
+
+### Accuracy and evaluation
+
+- **Small test sets, so wide error bars.** 129 test children in total, of whom only 29 have crackles and 16 have
+  wheeze-type sounds. A few children can move a sensitivity figure by 5-10 points. Each result comes from a single
+  training run (seed 42), with no estimate of run-to-run variation.
+- **Per-child truth is approximate.** A child counts as "has crackles" if paediatricians annotated crackles in any
+  of up to 4 randomly chosen recordings. This is not a confirmed diagnosis.
+- **Known weak spots:**
+  - Wheeze per child: sensitivity 0.44.
+  - False crackle alarms on single recordings: precision 0.39.
+  - Loud voices or crying: macro-recall about 0.47.
+- **The noise benchmark is artificial.** Noise was added digitally to clean recordings. Real noise picked up by a
+  phone pressed to the chest behaves differently.
+- **The voice/crying detector is unproven.** It looks above 2.5 kHz, where the 8 kHz children's data has little
+  content, so it almost never fired in testing. Whether it works on phone audio is untested.
+- **Untested conditions:**
+  - Very quiet recordings: v3 degraded at 10% volume, and v7 has not been checked.
+  - Recordings through clothing.
+  - Very young infants (few in the data).
+  - Adults: v7 was trained on children only.
+- **Unvalidated parts.** The DSP `acoustic_flags` heuristics are informational only. The single-recording
+  `/analyze` endpoint still uses the admin threshold, which was never tuned for v7.
+
+### App and recording
+
+- **Raw-microphone settings may be ignored on some devices.** Echo cancellation, noise suppression and auto gain are
+  requested off, but some browsers or phones (notably some iOS versions) may not fully honour this.
+- Phone microphones differ in frequency response and placement; recording technique (firm contact, bare skin,
+  stillness, quiet room) strongly affects quality.
+- Only the **first** chest spot's audio is archived on the Node server; the doctor dashboard shows the stored
+  summary, not each spot.
+- The admin confidence slider no longer affects per-child results.
+- Symptom parsing is keyword-based. The Kiswahili phrases were not reviewed by a native speaker, and unusual
+  phrasing can be missed or wrongly negated.
+
+### Engine and operations
+
+- **Jobs are held in memory.** Use a single worker; restarts lose in-progress jobs; results expire after an hour.
+- Sized for Render's free tier: one analysis at a time, so several CHWs submitting together will queue, and a
+  sleeping instance takes time to wake.
+- **Access control is weak.** The browser calls the engine directly. `ENGINE_API_KEY` is optional, and a key in
+  browser code is not secret.
+- **Licensing:** ESC-50 noise clips used for training augmentation are non-commercial (CC BY-NC); SPRSound requires
+  attribution (CC-BY-4.0).
+- **Large repository:** the raw adult audio (430 MB) and several model checkpoints are kept in Git history.
+
+## 11. Open issues and next steps
 
 In priority order:
 
@@ -298,7 +378,7 @@ In priority order:
 
 ---
 
-## 11. References
+## 12. References
 
 - Zhang Q. et al., *SPRSound: Open-Source SJTU Paediatric Respiratory Sound Database*, IEEE TBioCAS 2022 -
   [GitHub](https://github.com/SJTU-YONGFU-RESEARCH-GRP/SPRSound), [IEEE DataPort](https://ieee-dataport.org/node/12530)

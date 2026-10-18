@@ -6,6 +6,7 @@ FastAPI service that classifies a lung-sound recording as **Asthma/wheeze**, **N
 > recording. It was trained and tested on children (SPRSound, Shanghai, 1 month–18 years) recorded with a stethoscope,
 > not yet on phone recordings from Kenya. A diagnosis needs the whole child: several chest spots, breathing rate,
 > fever and danger signs (WHO/IMCI). Do not use it for clinical decisions until validated in the target setting.
+> Full list of limitations: [docs/AI_ENGINE_LOG.md#10-limitations](../docs/AI_ENGINE_LOG.md#10-limitations).
 
 **What the classes mean** (names kept for API compatibility; `biomarkers.sound_finding` says it plainly):
 

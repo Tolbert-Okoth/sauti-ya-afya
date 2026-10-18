@@ -35,6 +35,7 @@ it catches 79% of children with crackles and correctly clears 76% of those witho
 recordings (SPRSound, Shanghai) and not yet validated on phone recordings from Kenya: it is a screening aid only.
 
 - Full audit, fixes, experiments, results and next steps: [docs/AI_ENGINE_LOG.md](docs/AI_ENGINE_LOG.md)
+- **Limitations** (read before any clinical use): [docs/AI_ENGINE_LOG.md#10-limitations](docs/AI_ENGINE_LOG.md#10-limitations)
 - Engine reference (API, noise handling, retraining): [ai-engine/README.md](ai-engine/README.md)
 - Benchmarks: [ai-engine/benchmarks/README.md](ai-engine/benchmarks/README.md)
 
