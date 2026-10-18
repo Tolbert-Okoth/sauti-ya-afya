@@ -205,6 +205,7 @@ const SmartRecorder = ({ onLogout }) => {
       const pythonFormData = new FormData();
       pythonFormData.append('file', audioBlob, 'recording.webm');
       pythonFormData.append('threshold', systemConfig.confidence_threshold);
+      pythonFormData.append('symptoms', patientData.symptoms || "");
 
       const submitRes = await axios.post('https://sauti-ya-afya-1.onrender.com/analyze', pythonFormData);
       const jobId = submitRes.data.job_id;

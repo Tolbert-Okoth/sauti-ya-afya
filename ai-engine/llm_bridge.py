@@ -1,115 +1,104 @@
+"""
+Optional LLM explanation of an analyzer result (not wired into main.py yet).
+
+The LLM only explains; it must not be the source of treatment decisions.
+"""
 from dotenv import load_dotenv
 load_dotenv()
 
 import os
-from groq import Groq
 
-# Initialize Groq Client
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+_client = None
 
-def get_medical_explanation(biomarkers, age, symptoms, threshold=0.75):
-    """
-    Upgraded: Stronger antibiotic stewardship, age-specific RR context,
-    clearer differential between asthma vs pneumonia, IMCI-aligned logic.
-    """
-    
-    # 1. Extract key biomarkers
-    ai_diagnosis = biomarkers.get('ai_diagnosis', "Unknown")
-    prob_p = biomarkers.get('prob_pneumonia', 0.0)
-    prob_a = biomarkers.get('prob_asthma', 0.0)
-    prob_n = biomarkers.get('prob_normal', 0.0)
-    
-    bpm = biomarkers.get('respiratory_rate_bpm', 0)
-    clean_ratio = biomarkers.get('clean_audio_ratio', 1.0)
-    zcr = biomarkers.get('zero_crossing_rate', 0.0)
-    harmonic_ratio = biomarkers.get('harmonic_ratio', 0.0)
-    
-    # 2. Age-appropriate RR interpretation (WHO/IMCI pediatric thresholds)
-    rr_note = "Normal RR"
-    tachypnea_note = ""
-    if age < 1:          # <12 months
-        if bpm >= 50:
-            tachypnea_note = "TACHYPNEA (≥50 bpm) – possible pneumonia danger sign"
-        elif bpm > 60:
-            tachypnea_note = "SEVERE TACHYPNEA – urgent evaluation"
-    elif 1 <= age <= 5:  # 12–59 months
-        if bpm >= 40:
-            tachypnea_note = "TACHYPNEA (≥40 bpm) – possible pneumonia"
+
+def _get_client():
+    # Created lazily so a missing GROQ_API_KEY doesn't crash the engine at import time
+    global _client
+    if _client is None:
+        from groq import Groq
+        _client = Groq(api_key=os.environ["GROQ_API_KEY"])
+    return _client
+
+
+def fast_breathing_note(age_months, bpm):
+    """WHO/IMCI fast-breathing cut-offs. Returns '' when not fast or not measured."""
+    if bpm is None or age_months is None:
+        return ""
+    if age_months < 2:
+        cutoff = 60
+    elif age_months < 12:
+        cutoff = 50
+    elif age_months < 60:
+        cutoff = 40
     else:
-        if bpm > 30:
-            tachypnea_note = "Elevated RR – consider lower airway issue"
-    
-    quality_note = "Good audio quality."
-    if clean_ratio < 0.50:
-        quality_note = "⚠️ LOW AUDIO QUALITY – interpretation limited."
-    elif clean_ratio < 0.70:
-        quality_note += " Moderate noise may affect reliability."
+        cutoff = 30   # not an IMCI band; general paediatric guide for 5+ years
+    if bpm >= cutoff:
+        return f"FAST BREATHING (≥{cutoff}/min for age) – IMCI pneumonia sign"
+    return ""
 
-    # 3. Construct precise, stewardship-focused prompt
+
+def get_medical_explanation(result, age_months, symptoms, respiratory_rate_bpm=None):
+    """
+    result: the dict returned by analyzer.analyze_audio
+    age_months: patient age in months (IMCI bands are defined in months)
+    respiratory_rate_bpm: counted by the health worker, if available
+    """
+    bio = result.get("biomarkers", {})
+    diagnosis = bio.get("ai_diagnosis", "Unknown")
+    prob_p = bio.get("prob_pneumonia", 0.0)
+    prob_a = bio.get("prob_asthma", 0.0)
+    prob_n = bio.get("prob_normal", 0.0)
+    flags = bio.get("acoustic_flags", {})
+    danger = bio.get("danger_signs", [])
+
+    rr_text = (f"{respiratory_rate_bpm}/min. {fast_breathing_note(age_months, respiratory_rate_bpm) or 'Not fast for age.'}"
+               if respiratory_rate_bpm is not None else "Not counted")
+
     user_prompt = f"""
-You are an expert pediatric pulmonologist following WHO/IMCI guidelines and antibiotic stewardship principles.
-
 Patient:
-- Age: {age} years
+- Age: {age_months} months
 - Reported symptoms: {symptoms or "None provided"}
+- IMCI danger signs reported: {", ".join(danger) or "None"}
+- Respiratory rate: {rr_text}
 
-AI Lung Sound Analysis (MobileNetV2 multi-class):
-- Primary pattern: {ai_diagnosis.upper()}
-- Pneumonia probability: {int(prob_p * 100)}%  (suggests crackles/fluid/infection)
-- Asthma probability:    {int(prob_a * 100)}%  (suggests wheeze/obstruction)
-- Normal probability:    {int(prob_n * 100)}%
+AI lung sound analysis (screening model, trained mostly on ADULT recordings):
+- Pattern: {diagnosis}  (risk: {result.get("risk_level_output", "Unknown")})
+- Pneumonia-like: {int(prob_p * 100)}%, Asthma/wheeze-like: {int(prob_a * 100)}%, Normal: {int(prob_n * 100)}%
+- Heuristic sound flags (segments): {flags or "none"}
 
-DSP Features:
-- Respiratory rate: {bpm} bpm  → {tachypnea_note or rr_note}
-- Wheeze/harmonic indicator: {harmonic_ratio:.2f}  (high >0.35 → more likely asthma-like)
-- Crackle/chaotic indicator: {zcr:.2f}             (high >0.15–0.20 → more likely crackles/pneumonia)
-
-Audio quality: {quality_note}
-
-Task (be decisive, <80 words):
-1. Interpret probability balance: Is pneumonia clearly dominant (>65–70% + tachypnea/crackle signs), or is asthma / viral / normal more likely?
-2. Explain key acoustic findings briefly.
-3. Action recommendation:
-   - Asthma dominant → bronchodilators/nebulization (salbutamol), avoid routine antibiotics.
-   - Pneumonia dominant (esp. with tachypnea/danger signs) → antibiotics (amoxicillin preferred) + urgent referral if severe.
-   - Normal/low confidence → supportive care, observe, re-assess.
-   - Always: This is AI support only – clinical judgment + exam required.
-
-Prioritize avoiding unnecessary antibiotics unless bacterial pneumonia strongly indicated.
+In under 80 words, explain to a community health worker what the sound analysis suggests and
+how confident it is, and remind them which IMCI assessment steps to complete (count breathing,
+look for chest indrawing and danger signs). Do not prescribe medication or doses; refer to the
+local IMCI protocol and a clinician for treatment.
 """
 
     system_prompt = (
-        "You are a pediatric pulmonologist expert in IMCI/WHO guidelines. "
-        "Differentiate asthma (usually viral-triggered wheeze – no routine antibiotics) "
-        "from bacterial pneumonia (crackles, tachypnea – needs antibiotics). "
-        "Promote rational antibiotic use to reduce resistance."
+        "You support community health workers using WHO/IMCI guidelines. You explain AI screening "
+        "results cautiously, never overstate certainty, and never replace clinical assessment."
     )
 
     try:
-        chat_completion = client.chat.completions.create(
+        chat_completion = _get_client().chat.completions.create(
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "user", "content": user_prompt},
             ],
-            model="llama-3.3-70b-versatile",  # or mixtral/large if available
-            temperature=0.25,          # lower for more consistent, guideline-adherent output
+            model="llama-3.3-70b-versatile",
+            temperature=0.25,
             max_tokens=180,
         )
         explanation = chat_completion.choices[0].message.content.strip()
-        
-        # Safety wrapper
         return (
-            explanation + 
+            explanation +
             "\n\n**Important:** This is AI-generated support based on sound analysis only. "
-            "Full clinical assessment (including auscultation, oximetry, exam) is essential. "
+            "Full clinical assessment (including breathing count, oximetry, exam) is essential. "
             "Follow local IMCI protocols and consult a doctor."
         )
-        
+
     except Exception as e:
         print(f"Groq LLM error: {e}")
         return (
             "AI interpretation unavailable at this time. "
             "Please follow standard IMCI/WHO guidelines: assess for danger signs, "
-            "fast breathing, chest indrawing; treat suspected pneumonia with amoxicillin "
-            "if indicated, and use salbutamol for wheeze. Seek medical help urgently if severe."
+            "count the breathing rate and look for chest indrawing. Seek medical help urgently if severe."
         )

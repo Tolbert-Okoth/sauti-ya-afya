@@ -1,222 +1,256 @@
+"""
+Train the lung-sound classifier with an honest, patient-level evaluation.
+
+    python train_robust.py [--data ../raw_data_phase4] [--epochs 12]
+
+- Uses audio_pipeline.py, exactly like the live analyzer.
+- Splits train / validation / test BY PATIENT, so no patient (and none of the
+  three stethoscope-filter copies of a KAUH recording) appears in two splits.
+- Picks the epoch with the best validation macro-recall and reports test
+  metrics at recording level, aggregated the same way analyzer.py does.
+- Writes the checkpoint (weights + classes + pipeline version + metrics) and
+  model_metrics.json.
+"""
+import argparse
+import json
 import os
+import random
+import re
+from collections import Counter, defaultdict
+
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
-from torchvision import models, transforms
-import torchaudio
-import torchaudio.transforms as T
-import torchaudio.functional as F_audio
-from PIL import Image
-import numpy as np
-import random
-import soundfile as sf  
+from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
+from torchvision import models
 
-# 1. SETUP
-DATA_DIR = '../raw_data_phase4' 
-CLASSES = ['asthma_wheeze', 'normal', 'pneumonia'] 
-IMG_SIZE = (224, 224)
-BATCH_SIZE = 32         # Increased batch size slightly for stability
-EPOCHS = 25    
-LEARNING_RATE = 0.0001
+import audio_pipeline as ap
 
-# 🛠️ HARDWARE CHECK
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"🧠 Initializing Honest Brain on {device}...")
+CLASS_DIRS = ['asthma_wheeze', 'normal', 'pneumonia']
+CLASSES = ['Asthma', 'Normal', 'Pneumonia']   # index order used by analyzer.py
+AUDIO_EXTS = ('.wav', '.mp3', '.webm', '.m4a', '.flac', '.ogg', '.aac')
+EXCLUSIONS_FILE = 'data_exclusions.txt'
+MODEL_PATH = 'sauti_mobilenet_v3.pth'
+METRICS_PATH = 'model_metrics.json'
 
-# 🛠️ HELPER: THE BANDPASS FILTER (Same as Analyzer)
-def apply_bandpass_filter(waveform, sr=16000):
-    try:
-        # High-pass > 100Hz 
-        filtered = F_audio.highpass_biquad(waveform, sr, cutoff_freq=100.0)
-        # Low-pass < 2000Hz 
-        filtered = F_audio.lowpass_biquad(filtered, sr, cutoff_freq=2000.0)
-        return filtered
-    except:
-        return waveform
 
-# 2. AUGMENTATION
-class AudioAugmentor:
-    def __init__(self, sample_rate=16000):
-        self.sample_rate = sample_rate
+def patient_key(filename):
+    """Group recordings that come from the same person."""
+    m = re.match(r'^(\d{3})_', filename)                      # ICBHI: 101_1b1_Al_sc_Meditron.wav
+    if m:
+        return f"icbhi:{m.group(1)}"
+    m = re.match(r'^[BDE]P(\d+)_', filename)                  # KAUH: BP12_/DP12_/EP12_ = same recording
+    if m:
+        return f"kauh:{m.group(1)}"
+    m = re.match(r'^P(\d+)(Pneumonia|Wheezing|Healthy)', filename)  # P14WheezingIE_69.wav
+    if m:
+        return f"pset:{m.group(2)}:{m.group(1)}"
+    return f"file:{filename}"                                 # one-off clips
 
-    def __call__(self, waveform):
-        # A. Add Gaussian Noise (Reduced probability)
-        if random.random() < 0.3: 
-            noise = torch.randn_like(waveform)
-            waveform = waveform + noise * random.uniform(0.001, 0.01)
 
-        # B. Change Volume
-        if random.random() < 0.5:
-            gain = random.uniform(0.7, 1.3)
-            waveform = waveform * gain
+def load_exclusions(path):
+    excluded = set()
+    if os.path.exists(path):
+        with open(path, encoding='utf-8') as fh:
+            for line in fh:
+                line = line.split('#', 1)[0].strip()
+                if line:
+                    excluded.add(line)
+    return excluded
 
-        return waveform
 
-class RobustAudioDataset(Dataset):
-    def __init__(self, root_dir, transform=None, augment=False):
-        self.root_dir = root_dir
-        self.transform = transform
-        self.augment = augment
-        self.samples = []
-        self.augmentor = AudioAugmentor()
-        self.class_counts = [0] * len(CLASSES) 
-        
-        print(f"🔍 Scanning directory: {os.path.abspath(root_dir)}")
-
-        for label, class_name in enumerate(CLASSES):
-            class_dir = os.path.join(root_dir, class_name)
-            if not os.path.exists(class_dir): 
+def collect_recordings(data_dir):
+    excluded = load_exclusions(EXCLUSIONS_FILE)
+    recordings, skipped = [], []
+    for label, class_dir in enumerate(CLASS_DIRS):
+        folder = os.path.join(data_dir, class_dir)
+        for name in sorted(os.listdir(folder)):
+            if not name.lower().endswith(AUDIO_EXTS):
                 continue
-            
-            files = os.listdir(class_dir)
-            count_added = 0
-            for file in files:
-                if file.lower().endswith(('.wav', '.mp3', '.webm', '.m4a', '.flac', '.ogg', '.aac')):
-                    self.samples.append((os.path.join(class_dir, file), label))
-                    count_added += 1
-            
-            self.class_counts[label] = count_added
-            print(f"✅ {class_name}: {count_added} files")
+            rel = f"{class_dir}/{name}"
+            if rel in excluded:
+                skipped.append(rel)
+                continue
+            recordings.append({'path': os.path.join(folder, name), 'label': label, 'patient': patient_key(name)})
+    print(f"Excluded {len(skipped)} files listed in {EXCLUSIONS_FILE}")
+    return recordings
 
-    def __len__(self):
-        return len(self.samples)
 
-    def __getitem__(self, idx):
-        path, label = self.samples[idx]
-        
+def split_by_patient(recordings, seed, val_frac=0.15, test_frac=0.15):
+    """Stratified group split: each class's patients are divided train/val/test."""
+    rng = random.Random(seed)
+    patients_by_class = defaultdict(set)
+    for r in recordings:
+        patients_by_class[r['label']].add(r['patient'])
+    assign = {}
+    for label, patients in patients_by_class.items():
+        patients = sorted(patients)
+        rng.shuffle(patients)
+        n = len(patients)
+        n_test = max(1, round(n * test_frac))
+        n_val = max(1, round(n * val_frac))
+        for i, p in enumerate(patients):
+            assign[p] = 'test' if i < n_test else 'val' if i < n_test + n_val else 'train'
+    splits = defaultdict(list)
+    for r in recordings:
+        splits[assign[r['patient']]].append(r)
+    return splits
+
+
+def featurise(recordings):
+    """Decode each recording once and turn every usable 5 s window into a tensor."""
+    per_recording = []
+    for i, r in enumerate(recordings):
         try:
-            data, sr = sf.read(path)
-            waveform = torch.from_numpy(data).float()
-            if waveform.ndim == 1: waveform = waveform.unsqueeze(0)
-            else: waveform = waveform.t()
+            y = ap.load_audio(r['path'])
+        except ap.AudioDecodeError as e:
+            raise SystemExit(f"Failed to decode {r['path']}: {e}")
+        tensors = [ap.window_tensor(w) for w in ap.split_windows(y) if ap.window_quality(w)[0]]
+        per_recording.append(tensors)
+        if (i + 1) % 100 == 0:
+            print(f"   featurised {i + 1}/{len(recordings)}")
+    return per_recording
 
-            if sr != 16000:
-                resampler = T.Resample(sr, 16000)
-                waveform = resampler(waveform)
-            
-            # 🛡️ APPLY MEDICAL FILTER
-            waveform = apply_bandpass_filter(waveform, sr=16000)
 
-            target_len = 80000
-            if waveform.shape[1] < target_len:
-                pad_amount = target_len - waveform.shape[1]
-                waveform = torch.nn.functional.pad(waveform, (0, pad_amount))
-            else:
-                waveform = waveform[:, :target_len]
+def windows_dataset(recordings, feats):
+    xs, ys = [], []
+    for r, tensors in zip(recordings, feats):
+        for t in tensors:
+            xs.append(t)
+            ys.append(r['label'])
+    return torch.stack(xs), torch.tensor(ys)
 
-            if self.augment:
-                waveform = self.augmentor(waveform)
-            
-            mel_transform = T.MelSpectrogram(sample_rate=16000, n_mels=128, n_fft=2048, hop_length=512)
-            spectrogram = mel_transform(waveform)
-            spectrogram_db = T.AmplitudeToDB(stype='power', top_db=80)(spectrogram)
-            
-            # Fixed Normalization (Matching Analyzer)
-            s_norm = (spectrogram_db + 80) / 80.0
-            s_norm = torch.clamp(s_norm, 0, 1)
-            s_norm = s_norm.byte().squeeze(0).numpy() * 255
-            s_norm = np.flipud(s_norm)
-            img = Image.fromarray(s_norm.astype(np.uint8)).convert('RGB')
 
-            if self.transform:
-                img = self.transform(img)
+def spec_augment(batch):
+    """Random frequency and time masks plus a small circular time shift."""
+    batch = batch.clone()
+    for img in batch:
+        f0 = random.randint(0, 200); img[:, f0:f0 + random.randint(0, 20), :] = 0
+        t0 = random.randint(0, 200); img[:, :, t0:t0 + random.randint(0, 20)] = 0
+    return torch.roll(batch, shifts=random.randint(-20, 20), dims=3)
 
-            return img, label
-        except Exception as e:
-            return torch.zeros((3, 224, 224)), label
 
-# Transforms
-data_transform = transforms.Compose([
-    transforms.Resize(IMG_SIZE),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-])
+def build_model(pretrained=True):
+    weights = models.MobileNet_V2_Weights.DEFAULT if pretrained else None
+    model = models.mobilenet_v2(weights=weights)
+    model.classifier = nn.Sequential(nn.Dropout(0.2), nn.Linear(model.last_channel, len(CLASSES)))
+    return model
 
-# Load Data
-print(f"📂 Loading Dataset from {DATA_DIR}...")
-full_dataset = RobustAudioDataset(DATA_DIR, transform=data_transform, augment=True)
 
-if len(full_dataset) == 0:
-    print("❌ Error: No data found.")
-    exit()
+@torch.no_grad()
+def recording_probs(model, feats, device):
+    """Mean softmax over a recording's windows (same aggregation as analyzer.py)."""
+    model.eval()
+    out = []
+    for tensors in feats:
+        if not tensors:
+            out.append(None)
+            continue
+        probs = torch.softmax(model(torch.stack(tensors).to(device)), dim=1).mean(dim=0)
+        out.append(probs.cpu())
+    return out
 
-# ⚖️ THE EQUALIZER (Honest Sampling Strategy)
-# Instead of forcing weights in the loss function, we force the DataLoader 
-# to pick samples equally. This removes statistical bias completely.
 
-class_counts = full_dataset.class_counts
-sample_weights = []
+def evaluate(model, recordings, feats, device):
+    probs = recording_probs(model, feats, device)
+    confusion = [[0] * len(CLASSES) for _ in CLASSES]
+    unusable = 0
+    for r, p in zip(recordings, probs):
+        if p is None:
+            unusable += 1
+            continue
+        confusion[r['label']][int(p.argmax())] += 1
+    recall, precision = {}, {}
+    for i, c in enumerate(CLASSES):
+        row = sum(confusion[i])
+        col = sum(confusion[j][i] for j in range(len(CLASSES)))
+        recall[c] = confusion[i][i] / row if row else None
+        precision[c] = confusion[i][i] / col if col else None
+    valid = [v for v in recall.values() if v is not None]
+    total = sum(map(sum, confusion))
+    return {
+        'recordings': total,
+        'unusable_recordings': unusable,
+        'patients': len({r['patient'] for r in recordings}),
+        'accuracy': sum(confusion[i][i] for i in range(len(CLASSES))) / total if total else None,
+        'macro_recall': sum(valid) / len(valid) if valid else None,
+        'recall_sensitivity': recall,
+        'precision': precision,
+        'confusion_matrix': {'rows_true_cols_pred': CLASSES, 'matrix': confusion},
+    }
 
-print("\n⚖️ ACTIVATING EQUALIZER (Balanced Sampler):")
-print("   (Ensuring every batch has equal mix of Asthma/Normal/Pneumonia)")
 
-# Calculate weight for each individual file (Inverse Probability)
-for path, label in full_dataset.samples:
-    count = class_counts[label]
-    if count > 0:
-        weight = 1.0 / count
-    else:
-        weight = 0
-    sample_weights.append(weight)
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data', default='../raw_data_phase4')
+    parser.add_argument('--epochs', type=int, default=12)
+    parser.add_argument('--batch-size', type=int, default=32)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--seed', type=int, default=42)
+    args = parser.parse_args()
 
-# Create the Sampler
-sampler = WeightedRandomSampler(
-    weights=sample_weights,
-    num_samples=len(sample_weights),
-    replacement=True  # Allows resampling "rare" files to match "common" ones
-)
+    random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Loaders
-# Note: shuffle=False because sampler handles the randomness
-train_size = int(0.8 * len(full_dataset))
-val_size = len(full_dataset) - train_size
-train_data, val_data = torch.utils.data.random_split(full_dataset, [train_size, val_size])
+    recordings = collect_recordings(args.data)
+    splits = split_by_patient(recordings, args.seed)
+    for name in ('train', 'val', 'test'):
+        counts = Counter(CLASSES[r['label']] for r in splits[name])
+        print(f"{name:5s}: {len(splits[name])} recordings, "
+              f"{len({r['patient'] for r in splits[name]})} patients, {dict(counts)}")
+    assert not ({r['patient'] for r in splits['train']} & {r['patient'] for r in splits['test']}), "patient leak"
 
-# We apply the sampler only to Training. Validation should remain honest/random.
-# To use sampler with split data, we technically need to subset the indices, 
-# but for simplicity in this script, we will apply the sampler to the MAIN loader
-# and use that for training to guarantee balance.
+    print("Featurising (decoding + spectrograms)...")
+    feats = {name: featurise(splits[name]) for name in ('train', 'val', 'test')}
+    x_train, y_train = windows_dataset(splits['train'], feats['train'])
+    print(f"Training windows: {len(y_train)}")
 
-train_loader = DataLoader(full_dataset, batch_size=BATCH_SIZE, sampler=sampler)
+    # Balance classes in the TRAINING set only; val/test stay untouched.
+    class_counts = torch.bincount(y_train, minlength=len(CLASSES)).float()
+    sample_weights = (1.0 / class_counts)[y_train]
+    sampler = WeightedRandomSampler(sample_weights, num_samples=len(y_train), replacement=True)
+    loader = DataLoader(TensorDataset(x_train, y_train), batch_size=args.batch_size, sampler=sampler)
 
-# Model Setup
-print("\n🧠 Initializing Filtered Brain...")
-model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
-model.classifier[1] = nn.Linear(model.last_channel, len(CLASSES))
-model = model.to(device)
+    model = build_model().to(device)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-# 📉 HONEST LOSS FUNCTION (No Weights)
-# Since the sampler is balancing the data, we don't need weighted loss.
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    best_score, best_state, best_epoch = -1.0, None, 0
+    for epoch in range(1, args.epochs + 1):
+        model.train()
+        total_loss = 0.0
+        for xb, yb in loader:
+            xb, yb = spec_augment(xb).to(device), yb.to(device)
+            optimizer.zero_grad()
+            loss = criterion(model(xb), yb)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * len(yb)
+        val = evaluate(model, splits['val'], feats['val'], device)
+        print(f"Epoch {epoch}/{args.epochs}  train_loss={total_loss / len(y_train):.4f}  "
+              f"val_macro_recall={val['macro_recall']:.3f}  val_recall={ {k: round(v, 2) for k, v in val['recall_sensitivity'].items() if v is not None} }")
+        if val['macro_recall'] > best_score:
+            best_score, best_epoch = val['macro_recall'], epoch
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
-# Training Loop
-print(f"🚀 Starting Honest Training for {EPOCHS} Epochs...")
+    model.load_state_dict(best_state)
+    metrics = {
+        'pipeline_version': ap.PIPELINE_VERSION,
+        'classes': CLASSES,
+        'seed': args.seed,
+        'best_epoch': best_epoch,
+        'note': ("Held-out patients only. Source data (ICBHI 2017, KAUH and assorted clips) is "
+                 "predominantly ADULT; these numbers do not establish pediatric performance."),
+        'validation': evaluate(model, splits['val'], feats['val'], device),
+        'test': evaluate(model, splits['test'], feats['test'], device),
+    }
+    torch.save({'state_dict': best_state, 'classes': CLASSES,
+                'pipeline_version': ap.PIPELINE_VERSION, 'metrics': metrics}, MODEL_PATH)
+    with open(METRICS_PATH, 'w', encoding='utf-8') as fh:
+        json.dump(metrics, fh, indent=2)
+    print(json.dumps(metrics['test'], indent=2))
+    print(f"Saved {MODEL_PATH} and {METRICS_PATH} (best epoch {best_epoch})")
 
-for epoch in range(EPOCHS):
-    model.train()
-    running_loss = 0.0
-    correct = 0
-    total = 0
-    
-    for images, labels in train_loader:
-        images, labels = images.to(device), labels.to(device)
-        
-        optimizer.zero_grad()
-        outputs = model(images)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        
-        running_loss += loss.item()
-        _, predicted = torch.max(outputs.data, 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
 
-    acc = 100 * correct / total
-    print(f"Epoch {epoch+1}/{EPOCHS} - Loss: {running_loss/len(train_loader):.4f} - Acc: {acc:.2f}%")
-
-print("💾 Saving Filtered Model...")
-torch.save(model.state_dict(), 'sauti_mobilenet_v2_robust.pth')
-print("✅ Done! Trained on a perfectly level playing field.")
+if __name__ == '__main__':
+    main()
