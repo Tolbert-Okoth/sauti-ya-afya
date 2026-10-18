@@ -55,3 +55,9 @@ annotations by paediatricians:
 Most recordings of a sick child sound normal at that chest position, so a per-recording diagnosis label is mostly
 noise. The model has to learn what is audible (normal / wheeze / crackles) and the diagnosis must be made per
 CHILD, combining several chest positions with symptoms and breathing rate.
+
+### Sound-pattern model (v7, current)
+
+`children_v7model.json`: model trained on SPRSound with per-window SOUND labels (crackles / wheeze-type / normal),
+same 129 held-out children (1,219 recordings, none rejected): macro-recall **0.675**, accuracy 0.72;
+sensitivity wheeze-type 0.65, normal 0.75, crackles 0.63; precision 0.53 / 0.90 / 0.39.

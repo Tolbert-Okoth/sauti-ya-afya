@@ -17,11 +17,13 @@ import audio_pipeline as ap
 torch.set_num_threads(1)
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          os.environ.get("MODEL_FILE", "sauti_mobilenet_v5.pth"))
+                          os.environ.get("MODEL_FILE", "sauti_mobilenet_v7.pth"))
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
 DEFAULT_THRESHOLD = 0.75
 MIN_THRESHOLD, MAX_THRESHOLD = 0.5, 0.99
 DISCLAIMER = "AI Analysis Only. Consult a Doctor."
+# The model detects audible sound patterns; the class names are kept for API compatibility.
+SOUND_FINDING = {"Asthma": "wheeze", "Normal": "normal", "Pneumonia": "crackles"}
 
 
 class RecordingUnusable(Exception):
@@ -200,6 +202,9 @@ def analyze_audio(file_path, symptoms="", sensitivity_threshold=DEFAULT_THRESHOL
         "status": "success",
         "biomarkers": {
             "ai_diagnosis": diagnosis,
+            # What was actually heard. "Pneumonia" means crackles were detected, "Asthma" wheeze-type
+            # sounds; a diagnosis needs the whole child (several chest spots, breathing rate, fever).
+            "sound_finding": SOUND_FINDING[max(probs, key=probs.get)],
             "prob_pneumonia": round(probs["Pneumonia"], 3),
             "prob_asthma": round(probs["Asthma"], 3),
             "prob_normal": round(probs["Normal"], 3),

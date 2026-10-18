@@ -26,7 +26,7 @@ MIN_WINDOW_SAMPLES = SAMPLE_RATE * 2   # a trailing piece shorter than 2 s is dr
 MAX_SECONDS = 30                       # only the first 30 s of a recording is analysed
 
 # Quality gates (on the raw, un-normalised signal)
-SILENCE_RMS = 0.005      # below this a window is treated as silence
+SILENCE_RMS = 0.001      # below this a window is treated as silence (paediatric stethoscope audio sits ~0.002-0.003)
 CLIP_LEVEL = 0.99        # |sample| at or above this counts as clipped
 MAX_CLIPPED_FRACTION = 0.05
 MAX_ARTIFACT_FRACTION = 0.4   # voices/crying/friction share above which a window is dropped

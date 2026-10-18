@@ -1,0 +1,41 @@
+{
+  "recordings": 1219,
+  "unusable_recordings": 0,
+  "patients": 129,
+  "accuracy": 0.7219031993437244,
+  "macro_recall": 0.6752446644401111,
+  "recall_sensitivity": {
+    "Asthma": 0.6493506493506493,
+    "Normal": 0.7508125677139762,
+    "Pneumonia": 0.6255707762557078
+  },
+  "precision": {
+    "Asthma": 0.5263157894736842,
+    "Normal": 0.8976683937823834,
+    "Pneumonia": 0.38920454545454547
+  },
+  "confusion_matrix": {
+    "rows_true_cols_pred": [
+      "Asthma",
+      "Normal",
+      "Pneumonia"
+    ],
+    "matrix": [
+      [
+        50,
+        16,
+        11
+      ],
+      [
+        26,
+        693,
+        204
+      ],
+      [
+        19,
+        63,
+        137
+      ]
+    ]
+  }
+}
