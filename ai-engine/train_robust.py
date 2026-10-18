@@ -25,13 +25,14 @@ from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 from torchvision import models
 
 import audio_pipeline as ap
+from pediatric_data import sprsound_recordings
 from noise_mix import SYNTHETIC, mix, noise_groups, synthetic_noise
 
 CLASS_DIRS = ['asthma_wheeze', 'normal', 'pneumonia']
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']   # index order used by analyzer.py
 AUDIO_EXTS = ('.wav', '.mp3', '.webm', '.m4a', '.flac', '.ogg', '.aac')
 EXCLUSIONS_FILE = 'data_exclusions.txt'
-MODEL_PATH = 'sauti_mobilenet_v5.pth'
+MODEL_PATH = 'sauti_mobilenet_v6.pth'
 METRICS_PATH = 'model_metrics.json'
 
 
@@ -47,6 +48,16 @@ def patient_key(filename):
     if m:
         return f"pset:{m.group(2)}:{m.group(1)}"
     return f"file:{filename}"                                 # one-off clips
+
+
+def source_and_age(filename):
+    """(source, age_group) for raw_data_phase4 files. Only KAUH names carry an age."""
+    key = patient_key(filename).split(':')[0]
+    if key == 'kauh':
+        m = re.search(r',(\d+),[MF]\.wav$', filename)
+        if m:
+            return 'kauh', 'child' if int(m.group(1)) < 18 else 'adult'
+    return {'icbhi': 'icbhi', 'kauh': 'kauh', 'pset': 'pset'}.get(key, 'clips'), 'unknown'
 
 
 def load_exclusions(path):
@@ -72,19 +83,22 @@ def collect_recordings(data_dir):
             if rel in excluded:
                 skipped.append(rel)
                 continue
-            recordings.append({'path': os.path.join(folder, name), 'label': label, 'patient': patient_key(name)})
+            source, age_group = source_and_age(name)
+            recordings.append({'path': os.path.join(folder, name), 'label': label, 'patient': patient_key(name),
+                               'source': source, 'age_group': age_group})
     print(f"Excluded {len(skipped)} files listed in {EXCLUSIONS_FILE}")
     return recordings
 
 
 def split_by_patient(recordings, seed, val_frac=0.15, test_frac=0.15):
-    """Stratified group split: each class's patients are divided train/val/test."""
+    """Stratified group split: each (source, class) group's patients are divided train/val/test,
+    so every dataset - in particular the paediatric one - has its own held-out patients."""
     rng = random.Random(seed)
     patients_by_class = defaultdict(set)
     for r in recordings:
-        patients_by_class[r['label']].add(r['patient'])
+        patients_by_class[(r['source'], r['label'])].add(r['patient'])
     assign = {}
-    for label, patients in patients_by_class.items():
+    for _, patients in sorted(patients_by_class.items()):
         patients = sorted(patients)
         rng.shuffle(patients)
         n = len(patients)
@@ -123,7 +137,7 @@ def featurise(recordings, noise_dir="", noise_copies=0, seed=0):
         tensors = []
         for v in versions:
             usable, _, _, _ = ap.analysis_windows(v)
-            tensors.extend(ap.window_tensor(w) for w in usable)
+            tensors.extend(ap.window_tensor(w).half() for w in usable)   # float16 halves memory
         per_recording.append(tensors)
         if (i + 1) % 100 == 0:
             print(f"   featurised {i + 1}/{len(recordings)}")
@@ -164,13 +178,44 @@ def recording_probs(model, feats, device):
         if not tensors:
             out.append(None)
             continue
-        probs = torch.softmax(model(torch.stack(tensors).to(device)), dim=1).mean(dim=0)
+        probs = torch.softmax(model(torch.stack(tensors).float().to(device)), dim=1).mean(dim=0)
         out.append(probs.cpu())
     return out
 
 
-def evaluate(model, recordings, feats, device):
+def evaluate_groups(model, recordings, feats, device):
+    """Overall metrics plus the same metrics per age group (child / adult / unknown)."""
     probs = recording_probs(model, feats, device)
+    result = {'all': evaluate(recordings, probs)}
+    for group in sorted({r['age_group'] for r in recordings}):
+        idx = [i for i, r in enumerate(recordings) if r['age_group'] == group]
+        result[group] = evaluate([recordings[i] for i in idx], [probs[i] for i in idx])
+    return result
+
+
+def cap_per_class(recordings, max_per_class, seed):
+    """Keep at most max_per_class recordings per class, sampling whole patients (training only)."""
+    if not max_per_class:
+        return recordings
+    rng = random.Random(seed)
+    kept = []
+    for label in range(len(CLASSES)):
+        by_patient = defaultdict(list)
+        for r in recordings:
+            if r['label'] == label:
+                by_patient[r['patient']].append(r)
+        patients = sorted(by_patient)
+        rng.shuffle(patients)
+        count = 0
+        for p in patients:
+            if count >= max_per_class:
+                break
+            kept.extend(by_patient[p])
+            count += len(by_patient[p])
+    return kept
+
+
+def evaluate(recordings, probs):
     confusion = [[0] * len(CLASSES) for _ in CLASSES]
     unusable = 0
     for r, p in zip(recordings, probs):
@@ -208,17 +253,25 @@ def main():
     parser.add_argument('--noise-aug-dir', default='',
                         help='noise clips (one sub-folder per group) mixed into TRAINING recordings')
     parser.add_argument('--noise-copies', type=int, default=2, help='noisy copies per training recording')
+    parser.add_argument('--sprsound-dir', default='', help='SPRSound checkout (paediatric data, pediatric_data.py)')
+    parser.add_argument('--max-train-per-class', type=int, default=0,
+                        help='cap training recordings per class (whole patients), 0 = no cap')
     args = parser.parse_args()
 
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     recordings = collect_recordings(args.data)
+    if args.sprsound_dir:
+        recordings += sprsound_recordings(args.sprsound_dir, CLASS_DIRS)
     splits = split_by_patient(recordings, args.seed)
+    splits['train'] = cap_per_class(splits['train'], args.max_train_per_class, args.seed)
     for name in ('train', 'val', 'test'):
-        counts = Counter(CLASSES[r['label']] for r in splits[name])
-        print(f"{name:5s}: {len(splits[name])} recordings, "
-              f"{len({r['patient'] for r in splits[name]})} patients, {dict(counts)}")
+        for group in sorted({r['age_group'] for r in splits[name]}):
+            subset = [r for r in splits[name] if r['age_group'] == group]
+            counts = Counter(CLASSES[r['label']] for r in subset)
+            print(f"{name:5s} {group:7s}: {len(subset)} recordings, "
+                  f"{len({r['patient'] for r in subset})} patients, {dict(counts)}")
     assert not ({r['patient'] for r in splits['train']} & {r['patient'] for r in splits['test']}), "patient leak"
 
     print("Featurising (decoding + spectrograms)...")
@@ -243,15 +296,18 @@ def main():
         model.train()
         total_loss = 0.0
         for xb, yb in loader:
-            xb, yb = spec_augment(xb).to(device), yb.to(device)
+            xb, yb = spec_augment(xb.float()).to(device), yb.to(device)
             optimizer.zero_grad()
             loss = criterion(model(xb), yb)
             loss.backward()
             optimizer.step()
             total_loss += loss.item() * len(yb)
-        val = evaluate(model, splits['val'], feats['val'], device)
+        val_groups = evaluate_groups(model, splits['val'], feats['val'], device)
+        # Model selection on CHILDREN when available: they are the target population
+        val = val_groups.get('child', val_groups['all'])
         print(f"Epoch {epoch}/{args.epochs}  train_loss={total_loss / len(y_train):.4f}  "
-              f"val_macro_recall={val['macro_recall']:.3f}  val_recall={ {k: round(v, 2) for k, v in val['recall_sensitivity'].items() if v is not None} }")
+              + "  ".join(f"val_{g}_macro={m['macro_recall']:.3f}" for g, m in val_groups.items() if m['macro_recall'] is not None)
+              + f"  val_recall={ {k: round(v, 2) for k, v in val['recall_sensitivity'].items() if v is not None} }")
         if val['macro_recall'] > best_score:
             best_score, best_epoch = val['macro_recall'], epoch
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
@@ -264,10 +320,13 @@ def main():
         'best_epoch': best_epoch,
         'noise_augmentation': {'dir': os.path.basename(os.path.normpath(args.noise_aug_dir)) if args.noise_aug_dir else None,
                                'copies': args.noise_copies if args.noise_aug_dir else 0, 'snr_db': [0, 20]},
-        'note': ("Held-out patients only. Source data (ICBHI 2017, KAUH and assorted clips) is "
-                 "predominantly ADULT; these numbers do not establish pediatric performance."),
-        'validation': evaluate(model, splits['val'], feats['val'], device),
-        'test': evaluate(model, splits['test'], feats['test'], device),
+        'sprsound': bool(args.sprsound_dir),
+        'max_train_per_class': args.max_train_per_class,
+        'note': ("Held-out patients only, reported overall and per age group. 'child' = SPRSound "
+                 "(Shanghai, ages 1 month-18 years) plus KAUH patients under 18; 'unknown' = ICBHI and "
+                 "clips without age information (mostly adults)."),
+        'validation': evaluate_groups(model, splits['val'], feats['val'], device),
+        'test': evaluate_groups(model, splits['test'], feats['test'], device),
     }
     torch.save({'state_dict': best_state, 'classes': CLASSES,
                 'pipeline_version': ap.PIPELINE_VERSION, 'metrics': metrics}, MODEL_PATH)

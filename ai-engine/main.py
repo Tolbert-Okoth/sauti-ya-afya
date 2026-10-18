@@ -83,6 +83,11 @@ def background_worker(job_id: str, file_path: str, threshold: float, symptoms: s
         gc.collect()
 
 
+def _child_metrics():
+    test = MODEL_METRICS.get("test", {})
+    return test.get("child") or test.get("all") or test
+
+
 @app.get("/")
 def read_root():
     return {
@@ -90,7 +95,7 @@ def read_root():
         "mode": "Async Ticket System",
         "model": os.path.basename(MODEL_PATH),
         "pipeline_version": PIPELINE_VERSION,
-        "test_metrics": MODEL_METRICS.get("test", {}).get("recall_sensitivity"),
+        "test_sensitivity_children": _child_metrics().get("recall_sensitivity"),
     }
 
 
