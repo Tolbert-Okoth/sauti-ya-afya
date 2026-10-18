@@ -61,3 +61,17 @@ python -m pytest -q tests
 - Files known to be mislabelled are listed with reasons in `data_exclusions.txt`.
 - The epoch with the best validation macro-recall is kept; test metrics are reported per class (sensitivity and
   precision) at recording level.
+
+## Current model (`sauti_mobilenet_v3.pth`)
+
+Held-out test set: 110 recordings from 28 patients never seen in training (`model_metrics.json`).
+
+| | Sensitivity (recall) | Precision |
+|---|---|---|
+| Asthma / wheeze | 0.89 | 0.94 |
+| Normal | 0.67 | 0.80 |
+| Pneumonia | 0.92 | 0.82 |
+
+Accuracy 0.85, macro-recall 0.83. With only 28 test patients these numbers carry wide error bars (a few patients
+can move them by 5–10 points), and they are adult data. Known weakness: very quiet recordings (≈10% of normal
+level) degrade because the recording's own noise floor dominates the spectrogram.

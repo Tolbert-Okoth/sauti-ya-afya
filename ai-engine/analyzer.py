@@ -45,7 +45,6 @@ def _load_model(path):
     net.classifier = torch.nn.Sequential(torch.nn.Dropout(0.2), torch.nn.Linear(net.last_channel, len(CLASSES)))
     net.load_state_dict(checkpoint["state_dict"])
     net.eval()
-    net = torch.quantization.quantize_dynamic(net, {torch.nn.Linear}, dtype=torch.qint8)
     return net, checkpoint.get("metrics", {})
 
 

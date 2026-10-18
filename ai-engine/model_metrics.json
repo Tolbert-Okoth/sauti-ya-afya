@@ -1,0 +1,93 @@
+{
+  "pipeline_version": 2,
+  "classes": [
+    "Asthma",
+    "Normal",
+    "Pneumonia"
+  ],
+  "seed": 42,
+  "best_epoch": 9,
+  "note": "Held-out patients only. Source data (ICBHI 2017, KAUH and assorted clips) is predominantly ADULT; these numbers do not establish pediatric performance.",
+  "validation": {
+    "recordings": 113,
+    "unusable_recordings": 0,
+    "patients": 28,
+    "accuracy": 0.9469026548672567,
+    "macro_recall": 0.9358620689655172,
+    "recall_sensitivity": {
+      "Asthma": 1.0,
+      "Normal": 0.8275862068965517,
+      "Pneumonia": 0.98
+    },
+    "precision": {
+      "Asthma": 0.9714285714285714,
+      "Normal": 1.0,
+      "Pneumonia": 0.9074074074074074
+    },
+    "confusion_matrix": {
+      "rows_true_cols_pred": [
+        "Asthma",
+        "Normal",
+        "Pneumonia"
+      ],
+      "matrix": [
+        [
+          34,
+          0,
+          0
+        ],
+        [
+          0,
+          24,
+          5
+        ],
+        [
+          1,
+          0,
+          49
+        ]
+      ]
+    }
+  },
+  "test": {
+    "recordings": 110,
+    "unusable_recordings": 1,
+    "patients": 28,
+    "accuracy": 0.8545454545454545,
+    "macro_recall": 0.8256419684991113,
+    "recall_sensitivity": {
+      "Asthma": 0.8918918918918919,
+      "Normal": 0.6666666666666666,
+      "Pneumonia": 0.9183673469387755
+    },
+    "precision": {
+      "Asthma": 0.9428571428571428,
+      "Normal": 0.8,
+      "Pneumonia": 0.8181818181818182
+    },
+    "confusion_matrix": {
+      "rows_true_cols_pred": [
+        "Asthma",
+        "Normal",
+        "Pneumonia"
+      ],
+      "matrix": [
+        [
+          33,
+          0,
+          4
+        ],
+        [
+          2,
+          16,
+          6
+        ],
+        [
+          0,
+          4,
+          45
+        ]
+      ]
+    }
+  }
+}
