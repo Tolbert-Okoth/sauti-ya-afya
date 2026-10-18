@@ -9,22 +9,42 @@ FastAPI service that classifies a lung-sound recording as **Asthma/wheeze**, **N
 ## How a recording is analysed
 
 1. `audio_pipeline.load_audio` decodes the upload with ffmpeg (local files only) to 16 kHz mono, first 30 s.
-2. The signal is cut into 5 s windows. Silent or clipped windows are skipped. If none is usable, the job fails with
-   `retake: true` and a message telling the health worker to record again (never a "Low risk" result).
-3. Each window is band-passed (100–2000 Hz) and turned into an 8-bit mel spectrogram, scaled relative to its own peak so
+2. `denoise.py` cleans the whole recording (details below) and marks stretches covered by voices, crying or
+   phone friction.
+3. The signal is cut into 5 s windows. Silent, clipped or mostly-noise windows are skipped. If none is usable, the
+   job fails with `retake: true` and a message telling the health worker what to fix and to record again (never a
+   "Low risk" result).
+4. Each window is band-passed (100–2000 Hz) and turned into an 8-bit mel spectrogram, scaled relative to its own peak so
    phone volume doesn't matter.
-4. MobileNetV2 scores each window; the **mean of the window probabilities** is reported unchanged.
-5. Decision (`analyzer.decide`), using the admin confidence threshold (clamped to 0.50–0.99):
+5. MobileNetV2 scores each window; the **mean of the window probabilities** is reported unchanged.
+6. Decision (`analyzer.decide`), using the admin confidence threshold (clamped to 0.50–0.99):
 
    | Top class | ≥ threshold | < threshold |
    |---|---|---|
    | Pneumonia / Asthma | that class, **High** | "Suspected …", **Medium** |
    | Normal | Normal, **Low** | "Inconclusive", **Medium** |
 
-6. Extras that never change the probabilities:
+7. Extras that never change the probabilities:
    - `acoustic_flags`: heuristic wheeze-like / crackle-like segment counts (unvalidated thresholds).
    - `symptoms_reported` / `danger_signs`: parsed from the symptom text (English + Kiswahili, negation-aware).
      Any WHO/IMCI danger sign sets the risk to **High**.
+   - `noise_report`: what the denoiser found (hum frequencies, share of heart-sound, voice and friction frames).
+
+## Noise handling
+
+Removing "all noise" blindly also removes crackles and wheezes, so each noise type is treated separately
+(`denoise.py`, tested in `tests/test_denoise.py` to keep crackles and wheezes intact):
+
+| Noise | Treatment |
+|---|---|
+| Mains hum (50/60 Hz and harmonics) | narrow notch filters, only when the hum persists through the clip |
+| Steady background (hiss, fan, engine, rain) | gain against a noise floor estimated from the quietest moments, capped at −12 dB |
+| Heart sounds | low band (<200 Hz) attenuated during short heart-beat bursts |
+| Voices, crying, animals (airborne) | detected by energy above 2.5 kHz relative to the lung band, muted |
+| Friction / phone movement | loud, broadband, sustained (>60 ms) bursts are muted; short crackles are not matched |
+
+Denoising alone did **not** make the model robust: what did was training on recordings with noise mixed in
+(`--noise-aug-dir`), so the model learns what leftover noise looks like. See `benchmarks/README.md`.
 
 Training (`train_robust.py`) imports the same `audio_pipeline.py`, so training and serving inputs are identical. The
 checkpoint stores `PIPELINE_VERSION`; the engine refuses to start with a mismatched or missing model.
@@ -43,7 +63,7 @@ gunicorn -c gunicorn_config.py main:app  # or: python main.py
 | `MAX_UPLOAD_MB` | `10` | Upload size limit. |
 | `JOB_TTL_SECONDS` | `3600` | Finished jobs are forgotten after this. |
 | `MAX_JOBS` | `500` | Jobs held in memory at once. |
-| `MODEL_FILE` | `sauti_mobilenet_v3.pth` | Checkpoint to load. |
+| `MODEL_FILE` | `sauti_mobilenet_v5.pth` | Checkpoint to load. |
 
 Keep **one** worker: the job store is in memory.
 
@@ -52,7 +72,9 @@ Keep **one** worker: the job store is in memory.
 ```bash
 pip install -r requirements-train.txt
 python setup_phase4.py                  # only if ../raw_data_phase4 is missing
-python train_robust.py --epochs 12      # writes sauti_mobilenet_v3.pth + model_metrics.json
+# noise clips for augmentation: one sub-folder per group (we used ESC-50 folds 1-3: voices, animals, impulsive, steady)
+python train_robust.py --epochs 12 --noise-aug-dir /path/to/noise_train --noise-copies 2
+python evaluate_noise.py --noise-dir /path/to/noise_eval   # benchmark with DIFFERENT noise clips
 python -m pytest -q tests
 ```
 
@@ -62,16 +84,19 @@ python -m pytest -q tests
 - The epoch with the best validation macro-recall is kept; test metrics are reported per class (sensitivity and
   precision) at recording level.
 
-## Current model (`sauti_mobilenet_v3.pth`)
+## Current model (`sauti_mobilenet_v5.pth`)
 
-Held-out test set: 110 recordings from 28 patients never seen in training (`model_metrics.json`).
+Pipeline v3 (denoising) + trained with noise augmentation. Held-out test set: 110 recordings from 28 patients never
+seen in training (`model_metrics.json`).
 
 | | Sensitivity (recall) | Precision |
 |---|---|---|
-| Asthma / wheeze | 0.89 | 0.94 |
-| Normal | 0.67 | 0.80 |
-| Pneumonia | 0.92 | 0.82 |
+| Asthma / wheeze | 0.97 | 0.97 |
+| Normal | 0.83 | 0.77 |
+| Pneumonia | 0.90 | 0.94 |
 
-Accuracy 0.85, macro-recall 0.83. With only 28 test patients these numbers carry wide error bars (a few patients
-can move them by 5–10 points), and they are adult data. Known weakness: very quiet recordings (≈10% of normal
-level) degrade because the recording's own noise floor dominates the spectrogram.
+Accuracy 0.91, macro-recall 0.90. Under unseen noise (12 conditions) mean macro-recall is
+0.69 and pneumonia sensitivity 0.76, versus 0.47 and 0.38 for the previous engine (`benchmarks/`).
+With only 28 test patients these numbers carry wide error bars (a few patients can move them by 5–10 points), and
+they are adult data. Weakest conditions: loud steady noise and voices (macro-recall ~0.5), where healthy recordings
+are often called abnormal.

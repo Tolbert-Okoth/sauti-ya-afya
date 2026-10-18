@@ -17,7 +17,7 @@ import audio_pipeline as ap
 torch.set_num_threads(1)
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          os.environ.get("MODEL_FILE", "sauti_mobilenet_v4.pth"))
+                          os.environ.get("MODEL_FILE", "sauti_mobilenet_v5.pth"))
 CLASSES = ['Asthma', 'Normal', 'Pneumonia']
 DEFAULT_THRESHOLD = 0.75
 MIN_THRESHOLD, MAX_THRESHOLD = 0.5, 0.99
